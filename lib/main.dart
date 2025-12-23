@@ -7,6 +7,7 @@ import 'providers/leet_block_provider.dart';
 import 'screens/setup_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/statistics_screen.dart';
+import 'screens/problem_lists_screen.dart';
 import 'screens/permission_screen.dart';
 import 'services/platform_service.dart';
 
@@ -268,6 +269,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
+    ProblemListsScreen(),
     StatisticsScreen(),
   ];
 
@@ -301,6 +303,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 ),
                 _buildNavItem(
                   index: 1,
+                  icon: Icons.list_alt_rounded,
+                  label: 'Lists',
+                ),
+                _buildNavItem(
+                  index: 2,
                   icon: Icons.bar_chart_rounded,
                   label: 'Stats',
                 ),

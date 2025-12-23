@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -131,7 +130,7 @@ class _SetupScreenState extends State<SetupScreen> {
               children: [
                 Text(
                   'LeetBlock',
-                  style: GoogleFonts.jetBrainsMono(
+                  style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -139,7 +138,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 Text(
                   'Discipline through code',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
                     fontSize: 14,
                     color: Colors.white54,
                   ),
@@ -196,7 +195,7 @@ class _SetupScreenState extends State<SetupScreen> {
               )
             : Text(
                 '${step + 1}',
-                style: GoogleFonts.jetBrainsMono(
+                style: TextStyle(
                   color: Colors.white54,
                   fontWeight: FontWeight.bold,
                 ),
@@ -260,7 +259,7 @@ class _SetupScreenState extends State<SetupScreen> {
             children: [
               Text(
                 'Enter your LeetCode username',
-                style: GoogleFonts.inter(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -269,7 +268,7 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               Text(
                 'We\'ll track your daily progress to unlock apps',
-                style: GoogleFonts.inter(
+                style: TextStyle(
                   fontSize: 14,
                   color: Colors.white54,
                 ),
@@ -277,13 +276,13 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 32),
               TextFormField(
                 controller: _usernameController,
-                style: GoogleFonts.jetBrainsMono(
+                style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                 ),
                 decoration: InputDecoration(
                   hintText: 'username',
-                  hintStyle: GoogleFonts.jetBrainsMono(
+                  hintStyle: TextStyle(
                     color: Colors.white30,
                   ),
                   prefixIcon: const Icon(
@@ -303,7 +302,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       width: 2,
                     ),
                   ),
-                  errorStyle: GoogleFonts.inter(
+                  errorStyle: TextStyle(
                     color: const Color(0xFFFF6B6B),
                   ),
                 ),
@@ -335,7 +334,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       Expanded(
                         child: Text(
                           provider.error!,
-                          style: GoogleFonts.inter(
+                          style: TextStyle(
                             color: const Color(0xFFFF6B6B),
                           ),
                         ),
@@ -369,7 +368,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         )
                       : Text(
                           'Continue',
-                          style: GoogleFonts.inter(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -389,7 +388,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Set your daily quota',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -398,7 +397,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'How many LeetCode problems must you solve daily?',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -409,7 +408,7 @@ class _SetupScreenState extends State<SetupScreen> {
             children: [
               Text(
                 '$_selectedQuota',
-                style: GoogleFonts.jetBrainsMono(
+                style: TextStyle(
                   fontSize: 72,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFFFFA116),
@@ -417,7 +416,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ).animate().fadeIn(delay: 200.ms).scale(),
               Text(
                 _selectedQuota == 1 ? 'problem per day' : 'problems per day',
-                style: GoogleFonts.inter(
+                style: TextStyle(
                   fontSize: 16,
                   color: Colors.white54,
                 ),
@@ -453,11 +452,11 @@ class _SetupScreenState extends State<SetupScreen> {
                 children: [
                   Text(
                     '1',
-                    style: GoogleFonts.jetBrainsMono(color: Colors.white38),
+                    style: TextStyle(color: Colors.white38),
                   ),
                   Text(
                     '10',
-                    style: GoogleFonts.jetBrainsMono(color: Colors.white38),
+                    style: TextStyle(color: Colors.white38),
                   ),
                 ],
               ),
@@ -480,7 +479,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Continue',
-              style: GoogleFonts.inter(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -497,7 +496,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Enable Notifications',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -506,7 +505,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'We need this to warn you before penalties and show the persistent blocker notification.',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -532,7 +531,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Stay informed!',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
                     fontSize: 18,
                     color: Colors.white70,
                   ),
@@ -556,7 +555,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Enable Notifications',
-              style: GoogleFonts.inter(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -573,7 +572,7 @@ class _SetupScreenState extends State<SetupScreen> {
             },
             child: Text(
               'Skip for now',
-              style: GoogleFonts.inter(
+              style: TextStyle(
                 color: Colors.white38,
                 fontSize: 14,
               ),
@@ -590,7 +589,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Select apps to block',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -599,7 +598,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'These apps will be blocked until you complete your daily quota',
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -625,7 +624,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Choose wisely!',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
                     fontSize: 18,
                     color: Colors.white70,
                   ),
@@ -649,7 +648,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Select Apps',
-              style: GoogleFonts.inter(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),

@@ -146,6 +146,32 @@ class StorageService {
     return _prefs.getInt(_totalBlockedTimeKey) ?? 0;
   }
 
+  // Problem Lists
+  static const String _problemListsKey = 'problem_lists';
+  static const String _problemCompletionKey = 'problem_completion';
+
+  Future<void> saveProblemLists(List<Map<String, dynamic>> lists) async {
+    await _prefs.setString(_problemListsKey, jsonEncode(lists));
+  }
+
+  List<Map<String, dynamic>> getProblemLists() {
+    final jsonString = _prefs.getString(_problemListsKey);
+    if (jsonString == null) return [];
+    final decoded = jsonDecode(jsonString) as List;
+    return decoded.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  Future<void> saveProblemCompletion(Map<String, bool> completion) async {
+    await _prefs.setString(_problemCompletionKey, jsonEncode(completion));
+  }
+
+  Map<String, bool> getProblemCompletion() {
+    final jsonString = _prefs.getString(_problemCompletionKey);
+    if (jsonString == null) return {};
+    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+    return decoded.map((k, v) => MapEntry(k, v as bool));
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await _prefs.clear();
