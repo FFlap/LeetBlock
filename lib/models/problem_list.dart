@@ -6,12 +6,14 @@ class ProblemList {
   String name;
   final bool isCustom;
   final Map<String, List<Problem>> categories;
+  List<String>? categoryOrder; // For custom lists to track category order
 
   ProblemList({
     required this.id,
     required this.name,
     this.isCustom = false,
     required this.categories,
+    this.categoryOrder,
   });
 
   int get totalProblems {
@@ -30,16 +32,39 @@ class ProblemList {
     return count;
   }
 
+  /// Returns the ordered list of category names
+  List<String> get orderedCategoryKeys {
+    if (categoryOrder != null && categoryOrder!.isNotEmpty) {
+      // Return in custom order, adding any new categories at the end
+      final result = <String>[];
+      for (final key in categoryOrder!) {
+        if (categories.containsKey(key)) {
+          result.add(key);
+        }
+      }
+      // Add any categories not in the order list
+      for (final key in categories.keys) {
+        if (!result.contains(key)) {
+          result.add(key);
+        }
+      }
+      return result;
+    }
+    return categories.keys.toList();
+  }
+
   /// Returns categories with problems sorted by difficulty (Easy → Medium → Hard)
   Map<String, List<Problem>> get sortedCategories {
     final sorted = <String, List<Problem>>{};
-    for (final entry in categories.entries) {
-      final problems = List<Problem>.from(entry.value);
-      problems.sort((a, b) {
-        const order = {'Easy': 0, 'Medium': 1, 'Hard': 2};
-        return (order[a.difficulty] ?? 3).compareTo(order[b.difficulty] ?? 3);
-      });
-      sorted[entry.key] = problems;
+    for (final key in orderedCategoryKeys) {
+      if (categories.containsKey(key)) {
+        final problems = List<Problem>.from(categories[key]!);
+        problems.sort((a, b) {
+          const order = {'Easy': 0, 'Medium': 1, 'Hard': 2};
+          return (order[a.difficulty] ?? 3).compareTo(order[b.difficulty] ?? 3);
+        });
+        sorted[key] = problems;
+      }
     }
     return sorted;
   }
@@ -48,6 +73,7 @@ class ProblemList {
     'id': id,
     'name': name,
     'isCustom': isCustom,
+    'categoryOrder': categoryOrder,
     'categories': categories.map(
       (key, value) => MapEntry(key, value.map((p) => p.toJson()).toList()),
     ),
@@ -64,11 +90,15 @@ class ProblemList {
       categories[key] = problemsList;
     });
 
+    final categoryOrderJson = json['categoryOrder'] as List<dynamic>?;
+    final categoryOrder = categoryOrderJson?.cast<String>();
+
     return ProblemList(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       isCustom: json['isCustom'] ?? false,
       categories: categories,
+      categoryOrder: categoryOrder,
     );
   }
 }
@@ -118,16 +148,16 @@ class DefaultProblemLists {
         Problem(id: '417', title: 'Pacific Atlantic Water Flow', difficulty: 'Medium', url: 'https://leetcode.com/problems/pacific-atlantic-water-flow/'),
         Problem(id: '200', title: 'Number of Islands', difficulty: 'Medium', url: 'https://leetcode.com/problems/number-of-islands/'),
         Problem(id: '128', title: 'Longest Consecutive Sequence', difficulty: 'Medium', url: 'https://leetcode.com/problems/longest-consecutive-sequence/'),
-        Problem(id: '269', title: 'Alien Dictionary (Premium)', difficulty: 'Hard', url: 'https://leetcode.com/problems/alien-dictionary/'),
-        Problem(id: '261', title: 'Graph Valid Tree (Premium)', difficulty: 'Medium', url: 'https://leetcode.com/problems/graph-valid-tree/'),
-        Problem(id: '323', title: 'Number of Connected Components (Premium)', difficulty: 'Medium', url: 'https://leetcode.com/problems/number-of-connected-components-in-an-undirected-graph/'),
+        Problem(id: '269', title: 'Alien Dictionary', difficulty: 'Hard', url: 'https://leetcode.com/problems/alien-dictionary/', isPremium: true),
+        Problem(id: '261', title: 'Graph Valid Tree', difficulty: 'Medium', url: 'https://leetcode.com/problems/graph-valid-tree/', isPremium: true),
+        Problem(id: '323', title: 'Number of Connected Components', difficulty: 'Medium', url: 'https://leetcode.com/problems/number-of-connected-components-in-an-undirected-graph/', isPremium: true),
       ],
       'Interval': [
         Problem(id: '57', title: 'Insert Interval', difficulty: 'Medium', url: 'https://leetcode.com/problems/insert-interval/'),
         Problem(id: '56', title: 'Merge Intervals', difficulty: 'Medium', url: 'https://leetcode.com/problems/merge-intervals/'),
         Problem(id: '435', title: 'Non-overlapping Intervals', difficulty: 'Medium', url: 'https://leetcode.com/problems/non-overlapping-intervals/'),
-        Problem(id: '252', title: 'Meeting Rooms (Premium)', difficulty: 'Easy', url: 'https://leetcode.com/problems/meeting-rooms/'),
-        Problem(id: '253', title: 'Meeting Rooms II (Premium)', difficulty: 'Medium', url: 'https://leetcode.com/problems/meeting-rooms-ii/'),
+        Problem(id: '252', title: 'Meeting Rooms', difficulty: 'Easy', url: 'https://leetcode.com/problems/meeting-rooms/', isPremium: true),
+        Problem(id: '253', title: 'Meeting Rooms II', difficulty: 'Medium', url: 'https://leetcode.com/problems/meeting-rooms-ii/', isPremium: true),
       ],
       'Linked List': [
         Problem(id: '206', title: 'Reverse a Linked List', difficulty: 'Easy', url: 'https://leetcode.com/problems/reverse-linked-list/'),
@@ -153,7 +183,7 @@ class DefaultProblemLists {
         Problem(id: '125', title: 'Valid Palindrome', difficulty: 'Easy', url: 'https://leetcode.com/problems/valid-palindrome/'),
         Problem(id: '5', title: 'Longest Palindromic Substring', difficulty: 'Medium', url: 'https://leetcode.com/problems/longest-palindromic-substring/'),
         Problem(id: '647', title: 'Palindromic Substrings', difficulty: 'Medium', url: 'https://leetcode.com/problems/palindromic-substrings/'),
-        Problem(id: '271', title: 'Encode and Decode Strings (Premium)', difficulty: 'Medium', url: 'https://leetcode.com/problems/encode-and-decode-strings/'),
+        Problem(id: '271', title: 'Encode and Decode Strings', difficulty: 'Medium', url: 'https://leetcode.com/problems/encode-and-decode-strings/', isPremium: true),
       ],
       'Tree': [
         Problem(id: '104', title: 'Maximum Depth of Binary Tree', difficulty: 'Easy', url: 'https://leetcode.com/problems/maximum-depth-of-binary-tree/'),
@@ -198,7 +228,7 @@ class DefaultProblemLists {
         Problem(id: '912', title: 'Sort an Array', difficulty: 'Medium', url: 'https://leetcode.com/problems/sort-an-array/'),
         Problem(id: '75', title: 'Sort Colors', difficulty: 'Medium', url: 'https://leetcode.com/problems/sort-colors/'),
         Problem(id: '347', title: 'Top K Frequent Elements', difficulty: 'Medium', url: 'https://leetcode.com/problems/top-k-frequent-elements/'),
-        Problem(id: '271', title: 'Encode and Decode Strings', difficulty: 'Medium', url: 'https://leetcode.com/problems/encode-and-decode-strings/'),
+        Problem(id: '271', title: 'Encode and Decode Strings', difficulty: 'Medium', url: 'https://leetcode.com/problems/encode-and-decode-strings/', isPremium: true),
         Problem(id: '304', title: 'Range Sum Query 2D Immutable', difficulty: 'Medium', url: 'https://leetcode.com/problems/range-sum-query-2d-immutable/'),
         Problem(id: '238', title: 'Product of Array Except Self', difficulty: 'Medium', url: 'https://leetcode.com/problems/product-of-array-except-self/'),
         Problem(id: '36', title: 'Valid Sudoku', difficulty: 'Medium', url: 'https://leetcode.com/problems/valid-sudoku/'),
@@ -438,8 +468,8 @@ class DefaultProblemLists {
         Problem(id: '57', title: 'Insert Interval', difficulty: 'Medium', url: 'https://leetcode.com/problems/insert-interval/'),
         Problem(id: '56', title: 'Merge Intervals', difficulty: 'Medium', url: 'https://leetcode.com/problems/merge-intervals/'),
         Problem(id: '435', title: 'Non Overlapping Intervals', difficulty: 'Medium', url: 'https://leetcode.com/problems/non-overlapping-intervals/'),
-        Problem(id: '252', title: 'Meeting Rooms', difficulty: 'Easy', url: 'https://leetcode.com/problems/meeting-rooms/'),
-        Problem(id: '253', title: 'Meeting Rooms II', difficulty: 'Medium', url: 'https://leetcode.com/problems/meeting-rooms-ii/'),
+        Problem(id: '252', title: 'Meeting Rooms', difficulty: 'Easy', url: 'https://leetcode.com/problems/meeting-rooms/', isPremium: true),
+        Problem(id: '253', title: 'Meeting Rooms II', difficulty: 'Medium', url: 'https://leetcode.com/problems/meeting-rooms-ii/', isPremium: true),
         Problem(id: '2402', title: 'Meeting Rooms III', difficulty: 'Hard', url: 'https://leetcode.com/problems/meeting-rooms-iii/'),
         Problem(id: '1851', title: 'Minimum Interval to Include Each Query', difficulty: 'Hard', url: 'https://leetcode.com/problems/minimum-interval-to-include-each-query/'),
       ],

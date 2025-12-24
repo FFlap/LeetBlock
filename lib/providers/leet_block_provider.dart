@@ -3,6 +3,8 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
 import '../models/app_info.dart';
 import '../models/leetcode_stats.dart';
+import '../models/problem.dart';
+import '../models/problem_list.dart';
 import '../services/leetcode_service.dart';
 import '../services/storage_service.dart';
 import '../services/platform_service.dart';
@@ -60,6 +62,17 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _storageService.init();
     WidgetsBinding.instance.addObserver(this);
     _loadSavedData();
+    
+    // Cache default lists for native code to read
+    await _cacheDefaultLists();
+  }
+
+  Future<void> _cacheDefaultLists() async {
+    final defaultLists = {
+      'blind75': DefaultProblemLists.blind75.toJson(),
+      'neetcode250': DefaultProblemLists.neetcode250.toJson(),
+    };
+    await _storageService.cacheDefaultLists(defaultLists);
   }
 
   @override
@@ -192,6 +205,18 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Fetches detailed stats from LeetCode and syncs solved problems to all problem lists
+  Future<void> fetchAndSyncProblemLists() async {
+    try {
+      final result = await _leetCodeService.fetchDetailedStats(_username);
+      if (result != null) {
+        _detailedStats = result;
+        await syncSolvedProblemsToLists();
+      }
+    } catch (e) {
+    }
   }
 
   void _updateDailyProgress(int todaySubmissions) {
@@ -582,5 +607,179 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Syncs LeetCode solved problems to all problem lists
+  Future<void> syncSolvedProblemsToLists() async {
+    if (_detailedStats == null) return;
+    
+    // Get solved problem titles from LeetCode
+    final recentProblems = _detailedStats!['recentProblems'] as List<dynamic>?;
+    if (recentProblems == null || recentProblems.isEmpty) return;
+    
+    // Extract titles and normalize them
+    final solvedTitles = recentProblems
+        .map((p) => (p['title'] as String?)?.toLowerCase().trim())
+        .where((t) => t != null)
+        .cast<String>()
+        .toSet();
+    
+    if (solvedTitles.isEmpty) return;
+    
+    // Get all problem lists
+    final defaultLists = [
+      DefaultProblemLists.blind75,
+      DefaultProblemLists.neetcode250,
+    ];
+    
+    // Load custom lists
+    final savedListsJson = _storageService.getProblemLists();
+    final customLists = savedListsJson
+        .map((json) => ProblemList.fromJson(json))
+        .where((list) => list.isCustom)
+        .toList();
+    
+    final allLists = [...defaultLists, ...customLists];
+    
+    // Get existing completion status
+    final completion = _storageService.getProblemCompletion();
+    bool hasChanges = false;
+    
+    // Match and mark problems as complete
+    for (final list in allLists) {
+      for (final category in list.categories.entries) {
+        for (final problem in category.value) {
+          final problemTitle = problem.title.toLowerCase().trim();
+          // Remove "(Premium)" suffix if present for matching
+          final cleanTitle = problemTitle.replaceAll(RegExp(r'\s*\(premium\)\s*$', caseSensitive: false), '');
+          
+          if (solvedTitles.contains(cleanTitle) || solvedTitles.contains(problemTitle)) {
+            final key = '${list.id}_${problem.id}';
+            if (completion[key] != true) {
+              completion[key] = true;
+              hasChanges = true;
+            }
+          }
+        }
+      }
+    }
+    
+    // Save if there were changes
+    if (hasChanges) {
+      await _storageService.saveProblemCompletion(completion);
+    }
+  }
+
+  // Study Preferences
+  Map<String, dynamic> get studyPreferences => _storageService.getStudyPreferences();
+
+  Future<void> setStudyList(String? listId) async {
+    final prefs = _storageService.getStudyPreferences();
+    prefs['activeListId'] = listId;
+    await _storageService.saveStudyPreferences(prefs);
+    notifyListeners();
+  }
+
+  Future<void> setStudyOptions({
+    required bool random,
+    required bool unsolvedOnly,
+    required bool easiestFirst,
+    required bool skipPremium,
+  }) async {
+    final prefs = _storageService.getStudyPreferences();
+    prefs['random'] = random;
+    prefs['unsolvedOnly'] = unsolvedOnly;
+    prefs['easiestFirst'] = easiestFirst;
+    prefs['skipPremium'] = skipPremium;
+    await _storageService.saveStudyPreferences(prefs);
+    notifyListeners();
+  }
+
+  /// Gets the URL of the next problem to solve based on study preferences
+  /// Returns null if no study list is selected or all problems are completed
+  String? getNextProblemUrl() {
+    final prefs = _storageService.getStudyPreferences();
+    final activeListId = prefs['activeListId'] as String?;
+    final random = prefs['random'] as bool? ?? false;
+    final unsolvedOnly = prefs['unsolvedOnly'] as bool? ?? true;
+    final easiestFirst = prefs['easiestFirst'] as bool? ?? false;
+    final skipPremium = prefs['skipPremium'] as bool? ?? true;
+    
+    if (activeListId == null) return null;
+    
+    // Get the active list
+    ProblemList? activeList;
+    if (activeListId == 'blind75') {
+      activeList = DefaultProblemLists.blind75;
+    } else if (activeListId == 'neetcode250') {
+      activeList = DefaultProblemLists.neetcode250;
+    } else {
+      // Check custom lists
+      final savedListsJson = _storageService.getProblemLists();
+      for (final json in savedListsJson) {
+        final list = ProblemList.fromJson(json);
+        if (list.id == activeListId) {
+          activeList = list;
+          break;
+        }
+      }
+    }
+    
+    if (activeList == null) return null;
+    
+    // Get completion status
+    final completion = _storageService.getProblemCompletion();
+    
+    // Collect all problems
+    final allProblems = <Problem>[];
+    for (final category in activeList.categories.entries) {
+      for (final problem in category.value) {
+        allProblems.add(problem);
+      }
+    }
+    
+    if (allProblems.isEmpty) return null;
+    
+    // Filter based on unsolvedOnly flag
+    var candidateProblems = unsolvedOnly
+        ? allProblems.where((problem) {
+            final key = '${activeList!.id}_${problem.id}';
+            return completion[key] != true;
+          }).toList()
+        : allProblems.toList();
+    
+    // Filter out premium problems if skipPremium is enabled
+    if (skipPremium) {
+      candidateProblems = candidateProblems.where((p) => !p.isPremium).toList();
+    }
+    
+    if (candidateProblems.isEmpty) return null;
+    
+    // Sort by difficulty if easiestFirst is enabled
+    if (easiestFirst) {
+      candidateProblems.sort((a, b) {
+        const order = {'Easy': 0, 'Medium': 1, 'Hard': 2};
+        return (order[a.difficulty] ?? 1).compareTo(order[b.difficulty] ?? 1);
+      });
+    }
+    
+    // Select problem based on random flag
+    Problem selectedProblem;
+    if (random) {
+      if (easiestFirst && candidateProblems.isNotEmpty) {
+        // Pick random from the easiest difficulty tier
+        final lowestDifficulty = candidateProblems.first.difficulty;
+        final sameLevel = candidateProblems.where((p) => p.difficulty == lowestDifficulty).toList();
+        selectedProblem = sameLevel[DateTime.now().millisecondsSinceEpoch % sameLevel.length];
+      } else {
+        // Pick any random from candidates
+        selectedProblem = candidateProblems[DateTime.now().millisecondsSinceEpoch % candidateProblems.length];
+      }
+    } else {
+      // Pick first
+      selectedProblem = candidateProblems.first;
+    }
+    
+    return selectedProblem.url;
   }
 }

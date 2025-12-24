@@ -266,12 +266,19 @@ class MainNavigationShell extends StatefulWidget {
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
+  final GlobalKey<ProblemListsScreenState> _problemListsKey = GlobalKey();
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    ProblemListsScreen(),
-    StatisticsScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      const HomeScreen(),
+      ProblemListsScreen(key: _problemListsKey),
+      const StatisticsScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -326,7 +333,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }) {
     final isSelected = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () {
+        setState(() => _currentIndex = index);
+        // Refresh problem lists when switching to Lists tab
+        if (index == 1) {
+          _problemListsKey.currentState?.refresh();
+        }
+      },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

@@ -858,8 +858,7 @@ class AppBlockerService : Service() {
 
     private fun calculatePenalty(): Int {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enabled = prefs.getBoolean("flutter.penalty_enabled", false)
-        if (!enabled) return 0
+        val penaltyEnabled = prefs.getBoolean("flutter.penalty_enabled", false)
         
         val thresholdMins = getIntFromPrefs(prefs, "flutter.penalty_threshold_mins", 30)
         val increment = getIntFromPrefs(prefs, "flutter.penalty_increment", 1)
@@ -934,13 +933,14 @@ class AppBlockerService : Service() {
         }
         
         // Save total blocked time for UI display
-        // Save total blocked time for UI display
         prefs.edit().putLong("flutter.total_blocked_time", totalBlockedTime).apply()
 
         if (totalBlockedTime > 0) {
             Log.d(TAG, "Contributing Apps (Safe Events): $contributingApps")
         }
         
+        // If penalty is disabled, return 0 but blocked time is still tracked above
+        if (!penaltyEnabled) return 0
         
         val totalMinutes = totalBlockedTime / 1000 / 60
         val penaltyMultipliers = totalMinutes / thresholdMins
@@ -1003,9 +1003,162 @@ class AppBlockerService : Service() {
 
     private fun openLeetCode() {
         currentlyBlockingApp = null
-        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://leetcode.com/problemset/"))
+        
+        // Try to get next problem from study preferences
+        val nextProblemUrl = getNextProblemUrl()
+        val url = nextProblemUrl ?: "https://leetcode.com/problemset/"
+        
+        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         startActivity(intent)
+    }
+    
+    private fun getNextProblemUrl(): String? {
+        try {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            // Get study preferences
+            val prefsJson = prefs.getString("flutter.study_preferences", null) ?: return null
+            val studyPrefs = org.json.JSONObject(prefsJson)
+            val activeListId = studyPrefs.optString("activeListId", "")
+            val random = studyPrefs.optBoolean("random", false)
+            val unsolvedOnly = studyPrefs.optBoolean("unsolvedOnly", true)
+            val easiestFirst = studyPrefs.optBoolean("easiestFirst", false)
+            val skipPremium = studyPrefs.optBoolean("skipPremium", true)
+            
+            if (activeListId.isEmpty()) return null
+            
+            // Get problem completion status
+            val completionJson = prefs.getString("flutter.problem_completion", null)
+            val completion = if (completionJson != null) org.json.JSONObject(completionJson) else org.json.JSONObject()
+            
+            // Get the problems from the active list
+            val problems = getProblemsFromList(activeListId)
+            if (problems.isEmpty()) return null
+            
+            // Filter based on unsolvedOnly flag
+            val candidateProblems = if (unsolvedOnly) {
+                problems.filter { problem ->
+                    val key = "${activeListId}_${problem.id}"
+                    !completion.optBoolean(key, false)
+                }
+            } else {
+                problems
+            }
+            
+            if (candidateProblems.isEmpty()) return null
+            
+            // Filter out premium problems if skipPremium is enabled
+            val afterPremiumFilter = if (skipPremium) {
+                candidateProblems.filter { !it.isPremium }
+            } else {
+                candidateProblems
+            }
+            
+            if (afterPremiumFilter.isEmpty()) return null
+            
+            // Sort by difficulty if easiestFirst is enabled
+            val sortedProblems = if (easiestFirst) {
+                afterPremiumFilter.sortedBy { problem ->
+                    when (problem.difficulty) {
+                        "Easy" -> 0
+                        "Medium" -> 1
+                        "Hard" -> 2
+                        else -> 1
+                    }
+                }
+            } else {
+                afterPremiumFilter
+            }
+            
+            // Select problem based on random flag
+            val selectedProblem = if (random) {
+                if (easiestFirst && sortedProblems.isNotEmpty()) {
+                    // Pick random from the easiest difficulty tier
+                    val lowestDifficulty = sortedProblems.first().difficulty
+                    val sameLevel = sortedProblems.filter { it.difficulty == lowestDifficulty }
+                    val index = (System.currentTimeMillis() % sameLevel.size).toInt()
+                    sameLevel[index]
+                } else {
+                    // Pick any random from candidates
+                    val index = (System.currentTimeMillis() % sortedProblems.size).toInt()
+                    sortedProblems[index]
+                }
+            } else {
+                // Pick first
+                sortedProblems.firstOrNull()
+            }
+            
+            return selectedProblem?.url
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting next problem URL", e)
+            return null
+        }
+    }
+    
+    private data class ProblemInfo(val id: String, val title: String, val url: String, val difficulty: String, val isPremium: Boolean = false)
+    
+    private fun getProblemsFromList(listId: String): List<ProblemInfo> {
+        val problems = mutableListOf<ProblemInfo>()
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        
+        try {
+            // Check if it's a default list (embedded in code) or custom list
+            if (listId == "blind75" || listId == "neetcode250") {
+                // For default lists, we need to read from a cached version
+                // The Flutter side saves these when the app runs
+                val cachedListsJson = prefs.getString("flutter.cached_default_lists", null)
+                if (cachedListsJson != null) {
+                    val cachedLists = org.json.JSONObject(cachedListsJson)
+                    if (cachedLists.has(listId)) {
+                        val listData = cachedLists.getJSONObject(listId)
+                        return parseListProblems(listData)
+                    }
+                }
+            } else {
+                // Custom list - read from saved problem lists
+                val listsJson = prefs.getString("flutter.problem_lists", null)
+                if (listsJson != null) {
+                    val listsArray = org.json.JSONArray(listsJson)
+                    for (i in 0 until listsArray.length()) {
+                        val listObj = listsArray.getJSONObject(i)
+                        if (listObj.optString("id") == listId) {
+                            return parseListProblems(listObj)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting problems from list $listId", e)
+        }
+        
+        return problems
+    }
+    
+    private fun parseListProblems(listObj: org.json.JSONObject): List<ProblemInfo> {
+        val problems = mutableListOf<ProblemInfo>()
+        try {
+            if (!listObj.has("categories")) return problems
+            val categories = listObj.getJSONObject("categories")
+            val keys = categories.keys()
+            while (keys.hasNext()) {
+                val category = keys.next()
+                if (!categories.has(category)) continue
+                val problemsArray = categories.getJSONArray(category)
+                for (i in 0 until problemsArray.length()) {
+                    val problem = problemsArray.getJSONObject(i)
+                    problems.add(ProblemInfo(
+                        id = problem.optString("id", ""),
+                        title = problem.optString("title", ""),
+                        url = problem.optString("url", ""),
+                        difficulty = problem.optString("difficulty", "Medium"),
+                        isPremium = problem.optBoolean("isPremium", false)
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing list problems", e)
+        }
+        return problems
     }
     
     private fun goHome() {

@@ -4,6 +4,7 @@ class Problem {
   final String title;
   final String difficulty; // Easy, Medium, Hard
   final String url;
+  final bool isPremium;
   bool isCompleted;
 
   Problem({
@@ -11,6 +12,7 @@ class Problem {
     required this.title,
     required this.difficulty,
     required this.url,
+    this.isPremium = false,
     this.isCompleted = false,
   });
 
@@ -19,6 +21,7 @@ class Problem {
     'title': title,
     'difficulty': difficulty,
     'url': url,
+    'isPremium': isPremium,
     'isCompleted': isCompleted,
   };
 
@@ -27,6 +30,7 @@ class Problem {
     title: json['title'] ?? '',
     difficulty: json['difficulty'] ?? 'Medium',
     url: json['url'] ?? '',
+    isPremium: json['isPremium'] ?? false,
     isCompleted: json['isCompleted'] ?? false,
   );
 }

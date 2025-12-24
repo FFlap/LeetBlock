@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/problem_list.dart';
 import '../models/problem.dart';
+import '../services/leetcode_service.dart';
 
 class CreateListScreen extends StatefulWidget {
   const CreateListScreen({super.key});
@@ -25,98 +26,161 @@ class _CreateListScreenState extends State<CreateListScreen> {
   }
 
   void _addProblemToCategory(String category) {
+    final urlController = TextEditingController();
+    bool isLoading = false;
+    String? errorMessage;
+
     showDialog(
       context: context,
-      builder: (context) {
-        final titleController = TextEditingController();
-        final urlController = TextEditingController();
-        String difficulty = 'Medium';
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('Add Problem', style: TextStyle(color: Colors.white)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Problem Title',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFFFFA116)),
-                    ),
-                  ),
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Add Problem', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Paste a LeetCode problem URL and we\'ll fetch the details automatically.',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 13,
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: urlController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'LeetCode URL',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFFFFA116)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: difficulty,
-                  dropdownColor: const Color(0xFF252525),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Difficulty',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                    ),
-                  ),
-                  items: ['Easy', 'Medium', 'Hard'].map((d) {
-                    return DropdownMenuItem(value: d, child: Text(d));
-                  }).toList(),
-                  onChanged: (value) {
-                    setDialogState(() => difficulty = value!);
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5))),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFA116),
+              const SizedBox(height: 16),
+              TextField(
+                controller: urlController,
+                style: const TextStyle(color: Colors.white),
+                enabled: !isLoading,
+                decoration: InputDecoration(
+                  labelText: 'LeetCode URL',
+                  hintText: 'https://leetcode.com/problems/...',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                  prefixIcon: Icon(
+                    Icons.link,
+                    color: Colors.white.withOpacity(0.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: Color(0xFFFFA116)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
-                onPressed: () {
-                  if (titleController.text.isNotEmpty) {
-                    setState(() {
-                      _categories[category]!.add(Problem(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        title: titleController.text.trim(),
-                        url: urlController.text.trim(),
-                        difficulty: difficulty,
-                      ));
-                    });
-                    Navigator.pop(context);
+                onChanged: (value) {
+                  if (errorMessage != null) {
+                    setDialogState(() => errorMessage = null);
                   }
                 },
-                child: const Text('Add', style: TextStyle(color: Colors.black)),
               ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (isLoading) ...[
+                const SizedBox(height: 16),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFFFA116),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Fetching problem details...',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
-        );
-      },
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: isLoading ? Colors.white24 : Colors.white54,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                final url = urlController.text.trim();
+                
+                if (url.isEmpty) {
+                  setDialogState(() => errorMessage = 'Please enter a LeetCode URL');
+                  return;
+                }
+                
+                if (!url.contains('leetcode.com/problems/')) {
+                  setDialogState(() => errorMessage = 'Invalid URL. Please enter a valid LeetCode problem URL');
+                  return;
+                }
+                
+                setDialogState(() {
+                  isLoading = true;
+                  errorMessage = null;
+                });
+                
+                final leetCodeService = LeetCodeService();
+                final details = await leetCodeService.fetchProblemDetails(url);
+                
+                if (details != null && details['title']!.isNotEmpty) {
+                  setState(() {
+                    _categories[category]!.add(Problem(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      title: details['title']!,
+                      url: url,
+                      difficulty: details['difficulty'] ?? 'Medium',
+                      isPremium: details['isPremium'] == 'true',
+                    ));
+                  });
+                  Navigator.pop(context);
+                } else {
+                  setDialogState(() {
+                    isLoading = false;
+                    errorMessage = 'Could not fetch problem details. Please check the URL.';
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isLoading ? Colors.grey : const Color(0xFFFFA116),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

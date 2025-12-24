@@ -172,6 +172,31 @@ class StorageService {
     return decoded.map((k, v) => MapEntry(k, v as bool));
   }
 
+  // Study Preferences
+  static const String _studyPreferencesKey = 'study_preferences';
+
+  Future<void> saveStudyPreferences(Map<String, dynamic> prefs) async {
+    await _prefs.setString(_studyPreferencesKey, jsonEncode(prefs));
+  }
+
+  Map<String, dynamic> getStudyPreferences() {
+    final jsonString = _prefs.getString(_studyPreferencesKey);
+    if (jsonString == null) {
+      return {
+        'activeListId': null,
+        'selectionMode': 'first', // 'first', 'easiest', 'random'
+      };
+    }
+    return Map<String, dynamic>.from(jsonDecode(jsonString) as Map);
+  }
+
+  // Cache default lists for native code to read
+  static const String _cachedDefaultListsKey = 'cached_default_lists';
+
+  Future<void> cacheDefaultLists(Map<String, Map<String, dynamic>> lists) async {
+    await _prefs.setString(_cachedDefaultListsKey, jsonEncode(lists));
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await _prefs.clear();

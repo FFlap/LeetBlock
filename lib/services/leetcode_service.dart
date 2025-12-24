@@ -443,5 +443,64 @@ class LeetCodeService {
       return null;
     }
   }
+
+  /// Fetches problem details (title, difficulty) from a LeetCode problem URL
+  /// Returns a map with 'title' and 'difficulty' keys, or null if not found
+  Future<Map<String, String>?> fetchProblemDetails(String url) async {
+    try {
+      // Extract the proble from the URL
+      final regex = RegExp(r'leetcode\.com/problems/([^/]+)');
+      final match = regex.firstMatch(url);
+      
+      if (match == null) {
+        print('Could not extract problem from URL: $url');
+        return null;
+      }
+      
+      final slug = match.group(1);
+      
+      final query = '''
+        query questionData(\$titleSlug: String!) {
+          question(titleSlug: \$titleSlug) {
+            title
+            difficulty
+            questionFrontendId
+            isPaidOnly
+          }
+        }
+      ''';
+
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Referer': 'https://leetcode.com',
+        },
+        body: jsonEncode({
+          'query': query,
+          'variables': {'titleSlug': slug},
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['data'] != null && data['data']['question'] != null) {
+          final question = data['data']['question'];
+          return {
+            'title': question['title'] ?? '',
+            'difficulty': question['difficulty'] ?? 'Medium',
+            'id': question['questionFrontendId']?.toString() ?? '',
+            'isPremium': (question['isPaidOnly'] == true).toString(),
+          };
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      print('Error fetching problem details: $e');
+      return null;
+    }
+  }
 }
 
