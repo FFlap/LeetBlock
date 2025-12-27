@@ -29,6 +29,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic>? _detailedStats;
   int _currentStreak = 0;
   int _totalBlockedTime = 0;
+  Map<String, bool> _completionHistory = {};
 
   // Getters
   String get username => _username;
@@ -48,9 +49,24 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic>? get detailedStats => _detailedStats;
   int get currentStreak => _currentStreak;
   int get totalBlockedTime => _totalBlockedTime;
+  Map<String, bool> get completionHistory => _completionHistory;
+  Map<String, int> get screenTimeHistory => _storageService.getDailyScreenTimeHistory();
+  Map<String, Map<String, int>> get appUsageHistory => _storageService.getDailyAppUsageHistory();
   LeetCodeService get leetcodeService => _leetCodeService;
 
+  // Async methods to reload SharedPreferences before fetching (for native updates)
+  Future<Map<String, int>> getScreenTimeHistoryFresh() async {
+    await _storageService.reload();
+    return _storageService.getDailyScreenTimeHistory();
+  }
+
+  Future<Map<String, Map<String, int>>> getAppUsageHistoryFresh() async {
+    await _storageService.reload();
+    return _storageService.getDailyAppUsageHistory();
+  }
+
   bool get isQuotaMet => _dailyProgress?.isQuotaMet ?? false;
+  bool get isBaseQuotaMet => _dailyProgress?.isBaseQuotaMet ?? false;
   int get questionsCompletedToday => _dailyProgress?.questionsCompletedToday ?? 0;
   int get quotaPenalty => _dailyProgress?.quotaPenalty ?? 0;
   int get effectiveQuota => _dailyQuota + quotaPenalty;
@@ -61,10 +77,15 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     await _storageService.init();
     WidgetsBinding.instance.addObserver(this);
-    _loadSavedData();
+    await _loadSavedData();
     
     // Cache default lists for native code to read
     await _cacheDefaultLists();
+    
+    // Fetch fresh stats from LeetCode on app startup
+    if (_username.isNotEmpty) {
+      await fetchStats();
+    }
   }
 
   Future<void> _cacheDefaultLists() async {
@@ -100,7 +121,10 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _loadSavedData() {
+  Future<void> _loadSavedData() async {
+    // Reload storage to ensure we have the latest data
+    await _storageService.reload();
+    
     _username = _storageService.getUsername() ?? '';
     _dailyQuota = _storageService.getDailyQuota();
     _blockMessage = _storageService.getBlockMessage();
@@ -109,10 +133,10 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     _penaltyThreshold = _storageService.getPenaltyThreshold();
     _penaltyIncrement = _storageService.getPenaltyIncrement();
     _currentStats = _storageService.getLastStats();
-    _currentStats = _storageService.getLastStats();
     _dailyProgress = _storageService.getDailyProgress();
     _totalBlockedTime = _storageService.getTotalBlockedTime();
     _isSetupComplete = _storageService.isSetupComplete();
+    _completionHistory = _storageService.getDailyCompletionHistory();
 
     // Load blocked apps
     final savedBlockedApps = _storageService.getBlockedApps();
@@ -141,6 +165,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
         _currentStats?.totalSolved ?? 0,
       );
       _storageService.saveDailyProgress(_dailyProgress!);
+      _updateHistory();
     }
   }
 
@@ -181,8 +206,12 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> fetchStats() async {
     if (_username.isEmpty) return;
     
-    // Don't fetch if quota is already met for the day
-    if (_dailyProgress?.isQuotaMet ?? false) {
+    // Check if we need to fetch regardless of quota status
+    // (e.g., if difficulty totals are missing/zero)
+    final needsTotalsUpdate = (_currentStats?.totalEasy ?? 0) == 0;
+    
+    // Don't fetch if quota is already met for the day, UNLESS we need the totals
+    if ((_dailyProgress?.isQuotaMet ?? false) && !needsTotalsUpdate) {
       return;
     }
 
@@ -233,6 +262,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
     
     _storageService.saveDailyProgress(_dailyProgress!);
+    _updateHistory();
   }
 
   /// Set daily quota
@@ -243,6 +273,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_dailyProgress != null) {
       _dailyProgress = _dailyProgress!.copyWith(dailyQuota: quota);
       await _storageService.saveDailyProgress(_dailyProgress!);
+      await _updateHistory();
     }
     
     notifyListeners();
@@ -300,16 +331,24 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
     
     await _storageService.saveDailyProgress(_dailyProgress!);
+    await _updateHistory();
     notifyListeners();
   }
 
   /// Reset manual offset (clears any manual adjustments)
   Future<void> resetManualOffset() async {
     if (_dailyProgress != null) {
-      _dailyProgress = _dailyProgress!.copyWith(manualOffset: 0);
+      // Calculate the original count without manual offset
+      final currentOffset = _dailyProgress!.manualOffset;
+      final originalCount = (_dailyProgress!.questionsCompletedToday - currentOffset).clamp(0, 99);
+      
+      _dailyProgress = _dailyProgress!.copyWith(
+        questionsCompletedToday: originalCount,
+        manualOffset: 0,
+      );
       await _storageService.saveDailyProgress(_dailyProgress!);
-      // Refresh to get the actual count from LeetCode
-      await fetchStats();
+      await _updateHistory();
+      notifyListeners();
     }
   }
 
@@ -540,6 +579,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     
     await _storageService.setSetupComplete(true);
     await _storageService.saveDailyProgress(_dailyProgress!);
+    await _updateHistory();
     notifyListeners();
   }
 
@@ -589,6 +629,12 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
 
     try {
+      // Reload SharedPreferences to get latest data from native side
+      await _storageService.reload();
+      
+      // Refresh completion history from storage (may have been updated by another session)
+      _completionHistory = _storageService.getDailyCompletionHistory();
+      
       final result = await _leetCodeService.fetchDetailedStats(_username);
       
       if (result != null) {
@@ -781,5 +827,15 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     
     return selectedProblem.url;
+  }
+
+  Future<void> _updateHistory() async {
+    if (_dailyProgress != null) {
+      final date = _dailyProgress!.date;
+      final dateKey = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      // Use isBaseQuotaMet for weekly goal tracking (ignoring penalty)
+      _completionHistory[dateKey] = _dailyProgress!.isBaseQuotaMet;
+      await _storageService.saveDailyCompletionHistory(_completionHistory);
+    }
   }
 }

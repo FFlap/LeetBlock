@@ -383,6 +383,33 @@ class AppBlockerService : Service() {
         }
     }
 
+    // Check if BASE quota is met (ignoring penalty) - used for weekly goal tracking
+    private fun isBaseQuotaMet(): Boolean {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val progressJson = prefs.getString("flutter.daily_progress", null) ?: return false
+        
+        try {
+            val progress = JSONObject(progressJson)
+            val completed = progress.optInt("questionsCompletedToday", 0)
+            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1)
+            
+            val dateStr = progress.optString("date", "")
+            if (dateStr.isNotEmpty() && dateStr.length >= 10) {
+                val progressDate = dateStr.substring(0, 10)
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                
+                if (progressDate != today) {
+                    return false
+                }
+            }
+            
+            return completed >= baseQuota
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking base quota", e)
+            return false
+        }
+    }
+
 
 
 
@@ -934,6 +961,40 @@ class AppBlockerService : Service() {
         
         // Save total blocked time for UI display
         prefs.edit().putLong("flutter.total_blocked_time", totalBlockedTime).apply()
+        
+        // Update daily screen time history
+        try {
+            val historyJson = prefs.getString("flutter.daily_screen_time_history", "{}")
+            val history = JSONObject(historyJson ?: "{}")
+            val todayDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            history.put(todayDate, totalBlockedTime)
+            prefs.edit().putString("flutter.daily_screen_time_history", history.toString()).apply()
+            
+            // Update daily APP usage history (Breakdown)
+            val appHistoryJson = prefs.getString("flutter.daily_app_usage_history", "{}")
+            val appHistory = JSONObject(appHistoryJson ?: "{}")
+            
+            // Create JSON object for today's breakdown
+            val todayBreakdown = JSONObject()
+            for ((pkg, timeMs) in totalTimeMap) {
+                if (timeMs > 0) {
+                    todayBreakdown.put(pkg, timeMs)
+                }
+            }
+            
+            appHistory.put(todayDate, todayBreakdown)
+            prefs.edit().putString("flutter.daily_app_usage_history", appHistory.toString()).apply()
+            
+            // Update daily COMPLETION history (base quota status - ignoring penalty)
+            val completionHistoryJson = prefs.getString("flutter.daily_completion_history", "{}")
+            val completionHistory = JSONObject(completionHistoryJson ?: "{}")
+            val baseQuotaMet = isBaseQuotaMet()
+            completionHistory.put(todayDate, baseQuotaMet)
+            prefs.edit().putString("flutter.daily_completion_history", completionHistory.toString()).apply()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving daily screen time history", e)
+        }
 
         if (totalBlockedTime > 0) {
             Log.d(TAG, "Contributing Apps (Safe Events): $contributingApps")

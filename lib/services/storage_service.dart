@@ -77,6 +77,51 @@ class StorageService {
     return DailyProgress.fromJson(jsonDecode(jsonString));
   }
 
+  // Daily Completion History
+  static const String _dailyCompletionHistoryKey = 'daily_completion_history';
+
+  Future<void> saveDailyCompletionHistory(Map<String, bool> history) async {
+    await _prefs.setString(_dailyCompletionHistoryKey, jsonEncode(history));
+  }
+
+  Map<String, bool> getDailyCompletionHistory() {
+    final jsonString = _prefs.getString(_dailyCompletionHistoryKey);
+    if (jsonString == null) return {};
+    return Map<String, bool>.from(jsonDecode(jsonString));
+  }
+
+  // Daily Screen Time History
+  static const String _dailyScreenTimeHistoryKey = 'daily_screen_time_history';
+
+  Future<void> saveDailyScreenTimeHistory(Map<String, int> history) async {
+    await _prefs.setString(_dailyScreenTimeHistoryKey, jsonEncode(history));
+  }
+
+  Map<String, int> getDailyScreenTimeHistory() {
+    final jsonString = _prefs.getString(_dailyScreenTimeHistoryKey);
+    if (jsonString == null) return {};
+    return Map<String, int>.from(jsonDecode(jsonString));
+  }
+  
+  // Daily App Usage History Data
+  static const String _dailyAppUsageHistoryKey = 'daily_app_usage_history';
+
+  Map<String, Map<String, int>> getDailyAppUsageHistory() {
+    final jsonString = _prefs.getString(_dailyAppUsageHistoryKey);
+    if (jsonString == null) return {};
+    
+    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+    final result = <String, Map<String, int>>{};
+    
+    decoded.forEach((date, appMap) {
+      if (appMap is Map<String, dynamic>) {
+        result[date] = Map<String, int>.from(appMap);
+      }
+    });
+
+    return result;
+  }
+
   // Last Stats (cached)
   Future<void> saveLastStats(LeetCodeStats stats) async {
     await _prefs.setString(_lastStatsKey, jsonEncode(stats.toJson()));

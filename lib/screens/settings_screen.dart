@@ -241,11 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isComplete 
-                  ? const Color(0xFF238636).withOpacity(0.3)
-                  : Colors.white.withOpacity(0.05),
-            ),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

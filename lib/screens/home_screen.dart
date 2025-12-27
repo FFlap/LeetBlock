@@ -61,39 +61,17 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome back,',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: Colors.white54,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    provider.username,
-                    style: GoogleFonts.inter(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
+              Text(
+                provider.username,
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: -1,
+                ),
               ),
               Row(
                 children: [
-                  if (provider.isLoading)
-                    Container(
-                      width: 40,
-                      height: 40,
-                      padding: const EdgeInsets.all(10),
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFFFFA116),
-                      ),
-                    ),
                   Container(
                     width: 40,
                     height: 40,
@@ -138,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
           margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF2A2620), // Dark brownish/grey background from image
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white.withOpacity(0.05)),
           ),
@@ -155,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(
                         'Daily Progress',
                         style: GoogleFonts.inter(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
@@ -214,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
                   value: progress.clamp(0.0, 1.0),
-                  backgroundColor: const Color(0xFF1E1E1E),
+                  backgroundColor: const Color(0xFF2A2A2A),
                   color: const Color(0xFFFFA116),
                   minHeight: 12,
                 ),
@@ -292,9 +270,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return Consumer<LeetBlockProvider>(
       builder: (context, provider, _) {
         final stats = provider.currentStats;
+        final totalSolved = stats?.totalSolved ?? 0;
+        
+        // Use 0 as fallback if data is not available, avoiding hardcoded magic numbers
+        final totalEasy = stats?.totalEasy ?? 0;
+        final totalMedium = stats?.totalMedium ?? 0;
+        final totalHard = stats?.totalHard ?? 0;
+        
+        final totalQuestions = totalEasy + totalMedium + totalHard;
+        
+        final easySolved = stats?.easySolved ?? 0;
+        final mediumSolved = stats?.mediumSolved ?? 0;
+        final hardSolved = stats?.hardSolved ?? 0;
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        return Container(
+          margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -306,46 +302,79 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               Row(
                 children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Total',
-                      '${stats?.totalSolved ?? 0}',
-                      const Color(0xFFFFA116),
-                      Icons.emoji_events_rounded,
+                  // Circular Progress Ring
+                  SizedBox(
+                    width: 140,
+                    height: 140,
+                    child: CustomPaint(
+                      painter: _StatsRingPainter(
+                        easySolved: easySolved,
+                        mediumSolved: mediumSolved,
+                        hardSolved: hardSolved,
+                        totalEasy: totalEasy,
+                        totalMedium: totalMedium,
+                        totalHard: totalHard,
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '$totalSolved',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: '/$totalQuestions',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.check, color: Color(0xFF4CAF50), size: 14),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Solved',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 20),
+                  // Difficulty Breakdown Boxes
                   Expanded(
-                    child: _buildStatCard(
-                      'Easy',
-                      '${stats?.easySolved ?? 0}',
-                      const Color(0xFF4CAF50),
-                      Icons.check_circle_outline,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Medium',
-                      '${stats?.mediumSolved ?? 0}',
-                      const Color(0xFFFF9800),
-                      Icons.trending_up_rounded,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Hard',
-                      '${stats?.hardSolved ?? 0}',
-                      const Color(0xFFF44336),
-                      Icons.local_fire_department,
+                    child: Column(
+                      children: [
+                        _buildDifficultyBox('Easy', easySolved, totalEasy, const Color(0xFF4CAF50)),
+                        const SizedBox(height: 8),
+                        _buildDifficultyBox('Med.', mediumSolved, totalMedium, const Color(0xFFFF9800)),
+                        const SizedBox(height: 8),
+                        _buildDifficultyBox('Hard', hardSolved, totalHard, const Color(0xFFF44336)),
+                      ],
                     ),
                   ),
                 ],
@@ -357,53 +386,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatCard(String label, String value, Color color, IconData icon) {
+  Widget _buildDifficultyBox(String label, int solved, int total, Color color) {
     return Container(
-      height: 110, // Fixed height for consistency
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: const Color(0xFF252525),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Stack(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Icon top-left
-          Align(
-            alignment: Alignment.topLeft,
-            child: Icon(icon, color: color, size: 20),
-          ),
-          
-          // Label Pill top-right
-          Align(
-            alignment: Alignment.topRight,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-              ),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
             ),
           ),
-
-          // Value bottom-left
-          Align(
-            alignment: Alignment.bottomLeft,
-            child: Text(
-              value,
-              style: GoogleFonts.inter(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
+          Text(
+            '$solved/$total',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
             ),
           ),
         ],
@@ -451,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${(provider.totalBlockedTime / 1000 / 60).round()}m today',
+                              '${_formatBlockedTime(provider.totalBlockedTime)} today',
                               style: GoogleFonts.inter(
                                 fontSize: 12,
                                 color: Colors.white54,
@@ -624,6 +630,128 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+
+  /// Formats duration in ms to "Xh Ym" or "Xm"
+  String _formatBlockedTime(int ms) {
+    final totalMins = (ms / 1000 / 60).round();
+    if (totalMins >= 60) {
+      final hours = totalMins ~/ 60;
+      final mins = totalMins % 60;
+      return "${hours}h ${mins}m";
+    }
+    return "${totalMins}m";
+  }
 }
 
+// Custom Painter for the stats ring
+class _StatsRingPainter extends CustomPainter {
+  final int easySolved;
+  final int mediumSolved;
+  final int hardSolved;
+  final int totalEasy;
+  final int totalMedium;
+  final int totalHard;
 
+  _StatsRingPainter({
+    required this.easySolved,
+    required this.mediumSolved,
+    required this.hardSolved,
+    required this.totalEasy,
+    required this.totalMedium,
+    required this.totalHard,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 10;
+    const strokeWidth = 8.0;
+
+    // Horseshoe configuration
+    // Start at 135 degrees (bottom-left)
+    const startAngle = 135 * math.pi / 180;
+    // Sweep 270 degrees total
+    const fullSweep = 270 * math.pi / 180;
+    
+    // Calculate gap size in radians
+    // Reduce gap significantly
+    final capAngle = strokeWidth / radius; 
+    // Small visual gap (approx 2 degrees)
+    final visualGap = 2 * math.pi / 180; 
+    final gapSize = visualGap + capAngle; 
+
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // Calculate proportions
+    final totalAll = totalEasy + totalMedium + totalHard;
+    if (totalAll == 0) return;
+
+    final easyRatio = totalEasy / totalAll;
+    final mediumRatio = totalMedium / totalAll;
+    final hardRatio = totalHard / totalAll;
+    
+    // Total available sweep for the actual arcs (subtracting gaps)
+    // 2 gaps total (between 3 segments)
+    final availableSweep = fullSweep - (gapSize * 2);
+    
+    // Sweep angles for segments
+    final easySweep = easyRatio * availableSweep;
+    final mediumSweep = mediumRatio * availableSweep;
+    final hardSweep = hardRatio * availableSweep;
+    
+    double currentAngle = startAngle;
+    
+    // --- EASY SEGMENT (Green) ---
+    paint.color = const Color(0xFF1B3320);
+    canvas.drawArc(rect, currentAngle, easySweep, false, paint);
+    
+    if (totalEasy > 0) {
+      final easyProgressRatio = (easySolved / totalEasy).clamp(0.0, 1.0);
+      paint.color = const Color(0xFF4CAF50);
+      if (easyProgressRatio > 0.01) {
+         canvas.drawArc(rect, currentAngle, easySweep * easyProgressRatio, false, paint);
+      }
+    }
+    currentAngle += easySweep + gapSize;
+    
+    // --- MEDIUM SEGMENT (Orange) ---
+    paint.color = const Color(0xFF332B1B);
+    canvas.drawArc(rect, currentAngle, mediumSweep, false, paint);
+    
+    if (totalMedium > 0) {
+      final mediumProgressRatio = (mediumSolved / totalMedium).clamp(0.0, 1.0);
+      paint.color = const Color(0xFFFF9800);
+      if (mediumProgressRatio > 0.01) {
+        canvas.drawArc(rect, currentAngle, mediumSweep * mediumProgressRatio, false, paint);
+      }
+    }
+    currentAngle += mediumSweep + gapSize;
+    
+    // --- HARD SEGMENT (Red) ---
+    paint.color = const Color(0xFF331B1B);
+    canvas.drawArc(rect, currentAngle, hardSweep, false, paint);
+    
+    if (totalHard > 0) {
+       final hardProgressRatio = (hardSolved / totalHard).clamp(0.0, 1.0);
+       paint.color = const Color(0xFFF44336);
+       if (hardProgressRatio > 0.01) {
+         canvas.drawArc(rect, currentAngle, hardSweep * hardProgressRatio, false, paint);
+       }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StatsRingPainter oldDelegate) {
+    return easySolved != oldDelegate.easySolved ||
+           mediumSolved != oldDelegate.mediumSolved ||
+           hardSolved != oldDelegate.hardSolved ||
+           totalEasy != oldDelegate.totalEasy ||
+           totalMedium != oldDelegate.totalMedium ||
+           totalHard != oldDelegate.totalHard;
+  }
+}

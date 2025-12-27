@@ -11,6 +11,10 @@ class LeetCodeService {
     try {
       final query = '''
         query getUserProfile(\$username: String!) {
+          allQuestionsCount {
+            difficulty
+            count
+          }
           matchedUser(username: \$username) {
             username
             submitStats: submitStatsGlobal {
@@ -50,11 +54,17 @@ class LeetCodeService {
 
         final submitStats = data['data']['matchedUser']['submitStats']['acSubmissionNum'] as List;
         final recentSubmissions = data['data']['recentAcSubmissionList'] as List?;
+        final allQuestionsCount = data['data']['allQuestionsCount'] as List?;
         
         int totalSolved = 0;
         int easySolved = 0;
         int mediumSolved = 0;
         int hardSolved = 0;
+        
+        // Default totals (fallback)
+        int totalEasy = 0;
+        int totalMedium = 0;
+        int totalHard = 0;
 
         for (var stat in submitStats) {
           final difficulty = stat['difficulty'] as String;
@@ -73,6 +83,25 @@ class LeetCodeService {
             case 'Hard':
               hardSolved = count;
               break;
+          }
+        }
+        
+        // Parse total question counts per difficulty
+        if (allQuestionsCount != null) {
+          for (var item in allQuestionsCount) {
+            final difficulty = item['difficulty'] as String;
+            final count = item['count'] as int;
+            switch (difficulty) {
+              case 'Easy':
+                totalEasy = count;
+                break;
+              case 'Medium':
+                totalMedium = count;
+                break;
+              case 'Hard':
+                totalHard = count;
+                break;
+            }
           }
         }
 
@@ -99,6 +128,9 @@ class LeetCodeService {
           hardSolved: hardSolved,
           recentSubmissions: todaySubmissions,
           lastFetched: DateTime.now(),
+          totalEasy: totalEasy,
+          totalMedium: totalMedium,
+          totalHard: totalHard,
         );
       }
       
@@ -160,6 +192,10 @@ class LeetCodeService {
     try {
       final query = '''
         query getUserProfile(\$username: String!) {
+          allQuestionsCount {
+            difficulty
+            count
+          }
           matchedUser(username: \$username) {
             username
             submitStats: submitStatsGlobal {
@@ -226,11 +262,17 @@ class LeetCodeService {
         final submitStats = matchedUser['submitStats']['acSubmissionNum'] as List;
         final userCalendar = matchedUser['userCalendar'];
         final recentSubmissions = data['data']['recentAcSubmissionList'] as List?;
+        final allQuestionsCount = data['data']['allQuestionsCount'] as List?;
         
         int totalSolved = 0;
         int easySolved = 0;
         int mediumSolved = 0;
         int hardSolved = 0;
+        
+        // Default totals
+        int totalEasy = 0;
+        int totalMedium = 0;
+        int totalHard = 0;
 
         for (var stat in submitStats) {
           final difficulty = stat['difficulty'] as String;
@@ -249,6 +291,25 @@ class LeetCodeService {
             case 'Hard':
               hardSolved = count;
               break;
+          }
+        }
+        
+        // Parse total question counts per difficulty
+        if (allQuestionsCount != null) {
+          for (var item in allQuestionsCount) {
+            final difficulty = item['difficulty'] as String;
+            final count = item['count'] as int;
+            switch (difficulty) {
+              case 'Easy':
+                totalEasy = count;
+                break;
+              case 'Medium':
+                totalMedium = count;
+                break;
+              case 'Hard':
+                totalHard = count;
+                break;
+            }
           }
         }
 
@@ -366,6 +427,9 @@ class LeetCodeService {
           hardSolved: hardSolved,
           recentSubmissions: todaySubmissions,
           lastFetched: DateTime.now(),
+          totalEasy: totalEasy,
+          totalMedium: totalMedium,
+          totalHard: totalHard,
         );
 
         // Parse skills/tags data

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../models/problem_list.dart';
 import '../providers/leet_block_provider.dart';
@@ -118,47 +119,54 @@ class ProblemListsScreenState extends State<ProblemListsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Problem Lists',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        actions: [
-          if (_isSyncing)
-            const Padding(
-              padding: EdgeInsets.only(right: 16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFA116)),
+      backgroundColor: const Color(0xFF121212),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _syncFromLeetCode,
+          color: const Color(0xFFFFA116),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header matching Statistics screen style
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Problem Lists',
+                      style: GoogleFonts.inter(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _syncFromLeetCode,
-        color: const Color(0xFFFFA116),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: GridView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.0,
-            ),
-            itemCount: _lists.length + 1, // +1 for "Create New" card
-            itemBuilder: (context, index) {
-              if (index == _lists.length) {
-                return _buildCreateNewCard();
-              }
-              return _buildListCard(_lists[index]);
-            },
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 1.0,
+                    ),
+                    itemCount: _lists.length + 1, // +1 for "Create New" card
+                    itemBuilder: (context, index) {
+                      if (index == _lists.length) {
+                        return _buildCreateNewCard();
+                      }
+                      return _buildListCard(_lists[index]);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

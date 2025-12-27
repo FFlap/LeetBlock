@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:math' as math;
 import 'dart:convert' as java_convert;
+import 'dart:io';
 import '../providers/leet_block_provider.dart';
+import '../models/app_info.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -13,17 +15,36 @@ class StatisticsScreen extends StatefulWidget {
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
-class _StatisticsScreenState extends State<StatisticsScreen> {
-  String _selectedPeriod = '1W';
-  int? _hoverIndex;
-  Offset? _hoverPos;
+class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   
+  // Screen Time State
+  String _screenTimePeriod = '1W'; // '1W' or '1M'
+  int? _hoveredBarIndex;
+  int _screenTimePageOffset = 0; // 0 = current week/month, 1 = previous, etc.
+  DateTime _selectedDate = DateTime.now(); // Default to today
+  
+  // LeetCode Chart State
+  String _leetcodeChartPeriod = '1W';
+  int? _leetcodeHoverIndex;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    // Strip time for clean daily comparison
+    final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LeetBlockProvider>().fetchDetailedStats();
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -31,93 +52,152 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: SafeArea(
-        child: Consumer<LeetBlockProvider>(
-          builder: (context, provider, _) {
-            return RefreshIndicator(
-              onRefresh: () => provider.fetchDetailedStats(),
-              color: const Color(0xFFFFA116),
-              backgroundColor: const Color(0xFF1E1E1E),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(provider),
-                    _buildTotalSolvedCard(provider),
-                    _buildActivityChart(provider),
-                    _buildQuickStats(provider),
-                    _buildDifficultyBreakdown(provider),
-                    _buildRecentActivity(provider),
-                    const SizedBox(height: 32),
-                  ],
-                ),
+        child: Column(
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 16),
+            _buildTabBar(),
+            const SizedBox(height: 8),
+            Expanded(
+              child: Consumer<LeetBlockProvider>(
+                builder: (context, provider, _) {
+                  return TabBarView(
+                    controller: _tabController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      // PERSONAL STATS TAB (Default)
+                      RefreshIndicator(
+                        onRefresh: () => provider.fetchDetailedStats(),
+                        color: const Color(0xFFFFA116),
+                        backgroundColor: const Color(0xFF1E1E1E),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildWeeklyRequirements(provider),
+                              const SizedBox(height: 24),
+                              _buildScreenTimeGraph(provider),
+                              const SizedBox(height: 24),
+                              _buildAppUsageList(provider),
+                              const SizedBox(height: 32),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
+                      // LEETCODE STATS TAB
+                      RefreshIndicator(
+                        onRefresh: () => provider.fetchDetailedStats(),
+                        color: const Color(0xFFFFA116),
+                        backgroundColor: const Color(0xFF1E1E1E),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTotalSolvedCard(provider),
+                              const SizedBox(height: 24),
+                              _buildLeetCodeActivityChart(provider),
+                              const SizedBox(height: 24),
+                              _buildDifficultyBreakdown(provider),
+                              const SizedBox(height: 24),
+                              _buildRecentActivity(provider, context),
+                              const SizedBox(height: 32),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(LeetBlockProvider provider) {
+  Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Statistics',
-            style: GoogleFonts.inter(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Statistics',
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: -1,
+                ),
+              ),
+            ],
           ),
-          if (provider.isLoading)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Color(0xFFFFA116),
-              ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.calendar_today_outlined,
-                color: Colors.white54,
-                size: 20,
-              ),
-            ),
         ],
       ),
-    ).animate().fadeIn();
+    ).animate().fadeIn().slideX(begin: -0.1);
   }
 
-  Widget _buildTotalSolvedCard(LeetBlockProvider provider) {
-    final stats = provider.currentStats;
-    final totalSolved = stats?.totalSolved ?? 0;
-    final detailedStats = provider.detailedStats;
-    final streak = detailedStats?['streak'] ?? provider.currentStreak;
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      height: 40,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: const Color(0xFFFFA116),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        labelColor: Colors.black,
+        unselectedLabelColor: Colors.white54,
+        labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+        dividerColor: Colors.transparent,
+        padding: const EdgeInsets.all(4),
+        tabs: const [
+          Tab(text: 'Personal'),
+          Tab(text: 'LeetCode'),
+        ],
+      ),
+    );
+  }
+
+  // --- PERSONAL TAB WIDGETS ---
+
+  Widget _buildWeeklyRequirements(LeetBlockProvider provider) {
+    // Generate dates for the last 7 days (ending today)
+    final now = DateTime.now();
+    final dates = List.generate(7, (index) => now.subtract(Duration(days: 6 - index)));
+    
+    final history = provider.completionHistory;
+    final todayKey = _dateKey(DateTime.now());
+    
+    int completedCount = 0;
+    for (var date in dates) {
+      final key = _dateKey(date);
+      // For today, use the live isQuotaMet value
+      final isComplete = (key == todayKey) ? provider.isBaseQuotaMet : (history[key] == true);
+      if (isComplete) completedCount++;
+    }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF1E1E1E),
-            const Color(0xFF252525),
-          ],
-        ),
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
@@ -128,71 +208,521 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Total solved · All time',
+                'Weekly Goal',
                 style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: Colors.white54,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4CAF50).withOpacity(0.15),
+                  color: const Color(0xFFFFA116).withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.local_fire_department, 
-                      size: 14, color: Color(0xFFFF9800)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$streak day streak',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFFF9800),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  '$completedCount/7 completed',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFFFA116),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            '$totalSolved',
-            style: GoogleFonts.inter(
-              fontSize: 48,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: -2,
-            ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: dates.map((date) {
+              final key = _dateKey(date);
+              final isToday = _dateKey(DateTime.now()) == key;
+              // For today, use the live isBaseQuotaMet value (base quota only, ignoring penalty)
+              final isCompleted = isToday ? provider.isBaseQuotaMet : (history[key] == true);
+              final dayLabel = _dayLabel(date);
+              
+              return Column(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isCompleted ? const Color(0xFFFFA116) : Colors.transparent,
+                      border: Border.all(
+                        color: isCompleted 
+                            ? const Color(0xFFFFA116) 
+                            : isToday ? Colors.white38 : Colors.white12,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: isCompleted 
+                        ? const Icon(Icons.check, size: 20, color: Colors.black)
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    dayLabel,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: isToday ? Colors.white : Colors.white24,
+                      fontWeight: isToday ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
           ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.1);
+  }
+
+  Widget _buildScreenTimeGraph(LeetBlockProvider provider) {
+    final now = DateTime.now();
+    final isWeek = _screenTimePeriod == '1W';
+    final daysPerPeriod = isWeek ? 7 : 30;
+    
+    // Calculate start date based on offset
+    final endDate = now.subtract(Duration(days: _screenTimePeriod == '1W' ? _screenTimePageOffset * 7 : _screenTimePageOffset * 30));
+    
+    // Generate dates for current view (left to right)
+    final dates = List.generate(daysPerPeriod, (index) => endDate.subtract(Duration(days: daysPerPeriod - 1 - index)));
+    
+    final history = provider.screenTimeHistory;
+    final data = dates.map((date) {
+      final key = _dateKey(date);
+      return (history[key] ?? 0).toDouble();
+    }).toList();
+    
+    // Inject today's live value if relevant
+    if (_screenTimePageOffset == 0 && provider.totalBlockedTime > 0) {
+        final todayKey = _dateKey(now);
+        for (int i=0; i<dates.length; i++) {
+          if (_dateKey(dates[i]) == todayKey) {
+             if (history[todayKey] == null || provider.totalBlockedTime > history[todayKey]!) {
+                data[i] = provider.totalBlockedTime.toDouble();
+             }
+             break;
+          }
+        }
+    }
+
+    double maxVal = data.reduce(math.max);
+    if (maxVal == 0) maxVal = 1;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            'problems',
+            'Screen Time Blocked',
             style: GoogleFonts.inter(
               fontSize: 16,
-              color: Colors.white38,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Swipeable Chart Area
+          GestureDetector(
+             behavior: HitTestBehavior.opaque,
+             onHorizontalDragEnd: (details) {
+                if (details.primaryVelocity! > 0) {
+                  // Swipe Right -> View Previous Period
+                  setState(() {
+                    _screenTimePageOffset++; 
+                    _hoveredBarIndex = null;
+                  });
+                } else if (details.primaryVelocity! < 0) {
+                  // Swipe Left -> View Next Period
+                  if (_screenTimePageOffset > 0) {
+                    setState(() {
+                       _screenTimePageOffset--;
+                       _hoveredBarIndex = null;
+                    });
+                  }
+                }
+             },
+             child: Column(
+               children: [
+                  SizedBox(
+                    height: 150,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: List.generate(data.length, (index) {
+                        final value = data[index];
+                        final heightFactor = value / maxVal;
+                        final date = dates[index];
+                        // For monthly view, only show the date range at the bottom (no per-bar labels)
+                        final label = isWeek ? _dayLabel(date) : "";
+                        
+                        // Check if this date is currently selected
+                        final isSelected = _dateKey(date) == _dateKey(_selectedDate);
+                        final isHovered = _hoveredBarIndex == index;
+                        
+                        return Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              setState(() {
+                                 // Strip time for clean daily comparison
+                                _selectedDate = DateTime(date.year, date.month, date.day);
+                              });
+                            },
+                            onTapDown: (_) => setState(() => _hoveredBarIndex = index),
+                            onTapUp: (_) => setState(() => _hoveredBarIndex = null),
+                            onTapCancel: () => setState(() => _hoveredBarIndex = null),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                 // Tooltip - show for selected or hovered bars
+                                if (isHovered || isSelected)
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF333333),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      _formatDuration(value.toInt()),
+                                      style: GoogleFonts.inter(fontSize: 10, color: Colors.white),
+                                    ),
+                                  ),
+                                  
+                                Container(
+                                  height: math.max(4, 100 * heightFactor),
+                                  margin: EdgeInsets.symmetric(horizontal: isWeek ? 8 : 1),
+                                  decoration: BoxDecoration(
+                                    color: (isHovered || isSelected) 
+                                        ? const Color(0xFFFFA116)
+                                        : const Color(0xFFFFA116).withOpacity(0.5 + (heightFactor * 0.5)),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: isSelected ? Border.all(color: Colors.white, width: 1.5) : null,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  label,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    color: isSelected ? Colors.white : Colors.white38,
+                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Paging Indicator
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_screenTimePageOffset > 0)
+                        const Icon(Icons.chevron_left, size: 16, color: Colors.white38)
+                      else 
+                        const SizedBox(width: 16),
+                        
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          _getDateRangeLabel(dates.first, dates.last),
+                          style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
+                        ),
+                      ),
+                      
+                      if (_screenTimePageOffset > 0) 
+                         const Icon(Icons.chevron_right, size: 16, color: Colors.white38)
+                      else
+                         const SizedBox(width: 16),
+                    ],
+                  ),
+               ],
+             ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1);
+  }
+
+  Widget _buildAppUsageList(LeetBlockProvider provider) {
+     final dateKey = _dateKey(_selectedDate);
+     final history = provider.appUsageHistory;
+     
+     // Get apps for the selected date
+     Map<String, int> appsForDate = history[dateKey] ?? {};
+     
+     // If selected date is today, merge/override with latest from provider.allApps if we had granular tracking there?
+     // Actually appUsageHistory IS the breakdown source. 
+     // BUT, provider.appUsageHistory comes from StorageService, which reads from Prefs.
+     // AppBlockerService writes to Prefs.
+     // So on refresh, we get the latest.
+     // However, provider.appUsageHistory might be stale if we didn't call fetchDetailedStats (which reloads storage).
+     // The refreshIndicator does call it.
+     
+     if (appsForDate.isEmpty) {
+        return Container(
+            padding: const EdgeInsets.all(24),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Center(
+              child: Text(
+                "No usage data for $_dateKeyDisplay",
+                style: GoogleFonts.inter(color: Colors.white38),
+              ),
+            ),
+        ).animate().fadeIn(delay: 250.ms);
+     }
+     int totalMs = 0;
+     appsForDate.forEach((_, time) => totalMs += time);
+     final totalTimeStr = _formatDuration(totalMs);
+     
+     // Convert to list for sorting
+     final List<MapEntry<String, int>> sortedApps = appsForDate.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)); // Descending time
+        
+     return Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             Row(
+               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+               children: [
+                  Text(
+                    "Apps Blocked · $_dateKeyDisplay",
+                    style: GoogleFonts.inter(
+                      fontSize: 16, 
+                      fontWeight: FontWeight.w600, 
+                      color: Colors.white
+                    ),
+                  ),
+                  Text(
+                    totalTimeStr,
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFFFFA116),
+                    ),
+                  ),
+               ],
+             ),
+             const SizedBox(height: 16),
+             ...sortedApps.map((entry) {
+                final pkg = entry.key;
+                final durationMs = entry.value;
+                final durationStr = _formatDuration(durationMs);
+                
+                // Find app info if available
+                final appInfo = provider.allApps.firstWhere(
+                   (a) => a.packageName == pkg, 
+                   orElse: () => BlockedAppInfo(packageName: pkg, appName: pkg, isBlocked: true),
+                );
+                
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                       Container(
+                         width: 40,
+                         height: 40,
+                         decoration: BoxDecoration(
+                           borderRadius: BorderRadius.circular(10),
+                           image: appInfo.icon != null 
+                              ? DecorationImage(
+                                  image: MemoryImage(appInfo.icon!), 
+                                  fit: BoxFit.cover
+                                ) 
+                              : null,
+                         ),
+                         child: appInfo.icon == null 
+                            ? Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF252525),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.android, size: 20, color: Colors.white38),
+                              )
+                            : null,
+                       ),
+                       const SizedBox(width: 12),
+                       Expanded(
+                         child: Text(
+                           appInfo.appName,
+                           style: GoogleFonts.inter(
+                             color: Colors.white,
+                             fontWeight: FontWeight.w500,
+                             fontSize: 14,
+                           ),
+                           maxLines: 1,
+                           overflow: TextOverflow.ellipsis,
+                         ),
+                       ),
+                       Text(
+                         durationStr,
+                         style: GoogleFonts.inter(
+                           color: const Color(0xFFFFA116),
+                           fontWeight: FontWeight.w600,
+                           fontSize: 14,
+                         ),
+                       ),
+                    ],
+                  ),
+                );
+             }),
+           ],
+        ),
+     ).animate().fadeIn(delay: 250.ms);
+  }
+  
+  String get _dateKeyDisplay {
+     final now = DateTime.now();
+     if (_selectedDate.year == now.year && _selectedDate.month == now.month && _selectedDate.day == now.day) {
+       return "Today";
+     }
+     if (_selectedDate.year == now.year && _selectedDate.month == now.month && _selectedDate.day == now.day - 1) {
+       return "Yesterday";
+     }
+     return "${_selectedDate.month}/${_selectedDate.day}";
+  }
+  
+  String _getDateRangeLabel(DateTime start, DateTime end) {
+    return "${start.month}/${start.day} - ${end.month}/${end.day}";
+  }
+
+  Widget _periodButton(String period) {
+    final isSelected = _screenTimePeriod == period;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _screenTimePeriod = period;
+        _screenTimePageOffset = 0; // Reset offset on mode switch
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFA116) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          period,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.black : Colors.white54,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- LEETCODE TAB WIDGETS ---
+
+  Widget _buildTotalSolvedCard(LeetBlockProvider provider) {
+    final stats = provider.currentStats;
+    final totalSolved = stats?.totalSolved ?? 0;
+    final streak = provider.currentStreak;
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Total Problems Solved',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: Colors.white54,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$totalSolved',
+                  style: GoogleFonts.inter(
+                    fontSize: 42,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF252525),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFFA116), size: 24),
+                const SizedBox(height: 4),
+                Text(
+                  '$streak',
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Streak',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: Colors.white38,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.05);
+    ).animate().fadeIn(delay: 300.ms);
   }
 
-  Widget _buildActivityChart(LeetBlockProvider provider) {
+  Widget _buildLeetCodeActivityChart(LeetBlockProvider provider) {
     final detailedStats = provider.detailedStats;
     if (detailedStats == null) return const SizedBox();
 
-    final (chartData, totalInPeriod, periodLabel) = _getChartData(detailedStats);
+    final (chartData, totalInPeriod, periodLabel) = _getLeetCodeChartData(detailedStats, _leetcodeChartPeriod);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -204,303 +734,204 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Activity',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
+                   Text(
+                    'Submissions',
+                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        '$totalInPeriod',
-                        style: GoogleFonts.inter(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFFFA116),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        periodLabel,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: Colors.white38,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    '$totalInPeriod $periodLabel',
+                    style: GoogleFonts.inter(fontSize: 12, color: Colors.white54),
                   ),
                 ],
               ),
-              _buildPeriodSelector(),
+              // Period selector for LeetCode chart
+              Container(
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF252525),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    _leetcodePeriodButton('1W'),
+                    const SizedBox(width: 4),
+                    _leetcodePeriodButton('1M'),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
-          
-          // Area Chart
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return GestureDetector(
-                onPanUpdate: (details) {
-                  final width = constraints.maxWidth;
-                  final pointWidth = width / (chartData.length - 1);
-                  final index = (details.localPosition.dx / pointWidth).round().clamp(0, chartData.length - 1);
-                  setState(() {
-                    _hoverIndex = index;
-                    _hoverPos = details.localPosition;
-                  });
-                },
-                onPanEnd: (_) => setState(() => _hoverIndex = null),
-                onTapDown: (details) {
-                  final width = constraints.maxWidth;
-                  final pointWidth = width / (chartData.length - 1);
-                  final index = (details.localPosition.dx / pointWidth).round().clamp(0, chartData.length - 1);
-                  setState(() {
-                    _hoverIndex = index;
-                    _hoverPos = details.localPosition;
-                  });
-                },
-                onTapUp: (_) => setState(() => _hoverIndex = null),
-                onTapCancel: () => setState(() => _hoverIndex = null),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    SizedBox(
-                      height: 120,
-                      width: double.infinity,
-                      child: CustomPaint(
-                        size: Size(constraints.maxWidth, 120),
-                        painter: AreaChartPainter(
-                          data: chartData,
-                          lineColor: const Color(0xFFFFA116),
-                          fillColor: const Color(0xFFFFA116).withOpacity(0.2),
-                          hoverIndex: _hoverIndex,
-                        ),
-                      ),
-                    ),
-                    if (_hoverIndex != null && _hoverIndex! < chartData.length)
-                      Positioned(
-                        left: (_hoverIndex! * (constraints.maxWidth / (chartData.length - 1)) - 30).clamp(0.0, constraints.maxWidth - 60),
-                        top: -40,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2D2D2D),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${chartData[_hoverIndex!].toInt()}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                _getTooltipLabel(_hoverIndex!),
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  color: Colors.white54,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Day labels
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: _getChartLabels()
-                .asMap()
-                .entries
-                .map((entry) {
-              // Highlight today/last label
-              final isHighlight = entry.key == _getChartLabels().length - 1;
-              return Text(
-                entry.value,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: isHighlight ? const Color(0xFFFFA116) : Colors.white38,
-                  fontWeight: isHighlight ? FontWeight.w600 : FontWeight.normal,
-                ),
-              );
-            }).toList(),
+          SizedBox(
+            height: 120,
+            width: double.infinity,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Determine point width
+                final pointWidth = constraints.maxWidth / (chartData.length - 1);
+                
+                return GestureDetector(
+                   onPanUpdate: (details) {
+                     final index = (details.localPosition.dx / pointWidth).round().clamp(0, chartData.length - 1);
+                     setState(() => _leetcodeHoverIndex = index);
+                   },
+                   onPanEnd: (_) => setState(() => _leetcodeHoverIndex = null),
+                   onTapDown: (details) {
+                     final index = (details.localPosition.dx / pointWidth).round().clamp(0, chartData.length - 1);
+                     setState(() => _leetcodeHoverIndex = index);
+                   },
+                   onTapUp: (_) => setState(() => _leetcodeHoverIndex = null),
+                   
+                   child: Stack(
+                     clipBehavior: Clip.none,
+                     children: [
+                       CustomPaint(
+                         size: Size(constraints.maxWidth, 120),
+                         painter: AreaChartPainter(
+                           data: chartData,
+                           lineColor: const Color(0xFFFFA116),
+                           fillColor: const Color(0xFFFFA116).withOpacity(0.2),
+                           hoverIndex: _leetcodeHoverIndex,
+                         ),
+                       ),
+                       // Tooltip overlay - positioned at data point level
+                       if (_leetcodeHoverIndex != null && _leetcodeHoverIndex! < chartData.length)
+                         Builder(
+                           builder: (context) {
+                             final value = chartData[_leetcodeHoverIndex!];
+                             final maxVal = chartData.reduce(math.max);
+                             final normalizedY = maxVal > 0 ? (1 - value / maxVal) * 100 : 100.0;
+                             
+                             // Calculate date for this index
+                             final daysAgo = chartData.length - 1 - _leetcodeHoverIndex!;
+                             final date = DateTime.now().subtract(Duration(days: daysAgo));
+                             final dateStr = '${date.month}/${date.day}';
+                             
+                             return Positioned(
+                               left: (_leetcodeHoverIndex! * pointWidth - 35).clamp(0.0, constraints.maxWidth - 70),
+                               top: (normalizedY - 25).clamp(0.0, 95.0),
+                               child: Container(
+                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                 decoration: BoxDecoration(
+                                   color: const Color(0xFF333333),
+                                   borderRadius: BorderRadius.circular(6),
+                                 ),
+                                 child: Column(
+                                   mainAxisSize: MainAxisSize.min,
+                                   children: [
+                                     Text(
+                                       '${value.toInt()} submissions',
+                                       style: GoogleFonts.inter(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w500),
+                                     ),
+                                     Text(
+                                       dateStr,
+                                       style: GoogleFonts.inter(fontSize: 9, color: Colors.white54),
+                                     ),
+                                   ],
+                                 ),
+                               ),
+                             );
+                           },
+                         ),
+                     ],
+                   ),
+                );
+              },
+            ),
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.05);
+    ).animate().fadeIn(delay: 350.ms);
   }
 
-  Widget _buildPeriodSelector() {
-    final periods = ['1D', '1W', '1M', 'YTD', 'MAX'];
-    
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF252525),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: periods.map((period) {
-          final isSelected = period == _selectedPeriod;
-          return GestureDetector(
-            onTap: () => setState(() {
-              _selectedPeriod = period;
-              _hoverIndex = null;
-            }),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFFA116) : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                period,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.black : Colors.white54,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+  Widget _leetcodePeriodButton(String period) {
+    final isSelected = _leetcodeChartPeriod == period;
+    return GestureDetector(
+      onTap: () => setState(() => _leetcodeChartPeriod = period),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFA116) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          period,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.black : Colors.white54,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildQuickStats(LeetBlockProvider provider) {
-    final detailedStats = provider.detailedStats;
-    final maxStreak = detailedStats?['maxStreak'] ?? 0;
-    final activeDays = detailedStats?['totalActiveDays'] ?? 0;
+  (List<double>, int, String) _getLeetCodeChartData(Map<String, dynamic> stats, String period) {
+     final now = DateTime.now();
+     final today = DateTime(now.year, now.month, now.day);
+     
+     // Parse calendar
+     final calendarJson = stats['submissionCalendar'];
+     Map<int, int> calendar = {};
+     if (calendarJson is String) {
+       try {
+         final Map<String, dynamic> decoded = Map<String, dynamic>.from(java_convert.jsonDecode(calendarJson));
+         decoded.forEach((k, v) => calendar[int.parse(k)] = v as int);
+       } catch (e) {
+         print("Error parsing calendar: $e");
+       }
+     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildQuickStatCard(
-              'Best Streak',
-              '$maxStreak',
-              'days',
-              const Color(0xFFFF9800),
-              Icons.emoji_events_rounded,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickStatCard(
-              'Active Days',
-              '$activeDays',
-              'total',
-              const Color(0xFF4CAF50),
-              Icons.calendar_month_rounded,
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(delay: 300.ms);
-  }
+     List<double> data = [];
+     int total = 0;
+     String label = '';
 
-  Widget _buildQuickStatCard(String title, String value, String subtitle, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.white54,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 14, color: color),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                value,
-                style: GoogleFonts.inter(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  subtitle,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.white38,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+     if (period == '1W') {
+        data = List.filled(7, 0.0);
+        for(int i=6; i>=0; i--) {
+           final day = today.subtract(Duration(days: i));
+           // Sum for this day
+           calendar.forEach((ts, count) {
+              final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+              if (date.year == day.year && date.month == day.month && date.day == day.day) {
+                 data[6-i] += count; // Using i here means rightmost is i=0 (today). index logic: 6-i
+                 total += count;
+              }
+           });
+        }
+        label = 'this week';
+     } else {
+        // 1M
+        data = List.filled(30, 0.0);
+        for(int i=29; i>=0; i--) {
+           final day = today.subtract(Duration(days: i));
+           calendar.forEach((ts, count) {
+              final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+              if (date.year == day.year && date.month == day.month && date.day == day.day) {
+                 data[29-i] += count; 
+                 total += count;
+              }
+           });
+        }
+        label = 'this month';
+     }
+     
+     return (data, total, label);
   }
 
   Widget _buildDifficultyBreakdown(LeetBlockProvider provider) {
     final stats = provider.currentStats;
-
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+           Text(
             'Difficulty Breakdown',
             style: GoogleFonts.inter(
               fontSize: 16,
@@ -509,26 +940,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _buildDifficultyRow(
-            'Easy',
-            stats?.easySolved ?? 0,
-            830,
-            const Color(0xFF4CAF50),
-          ),
+          _buildDifficultyRow('Easy', stats?.easySolved ?? 0, stats?.totalEasy ?? 0, const Color(0xFF4CAF50)),
           const SizedBox(height: 16),
-          _buildDifficultyRow(
-            'Medium',
-            stats?.mediumSolved ?? 0,
-            1740,
-            const Color(0xFFFF9800),
-          ),
+          _buildDifficultyRow('Medium', stats?.mediumSolved ?? 0, stats?.totalMedium ?? 0, const Color(0xFFFF9800)),
           const SizedBox(height: 16),
-          _buildDifficultyRow(
-            'Hard',
-            stats?.hardSolved ?? 0,
-            801,
-            const Color(0xFFF44336),
-          ),
+          _buildDifficultyRow('Hard', stats?.hardSolved ?? 0, stats?.totalHard ?? 0, const Color(0xFFF44336)),
         ],
       ),
     ).animate().fadeIn(delay: 400.ms);
@@ -610,390 +1026,186 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildRecentActivity(LeetBlockProvider provider) {
-    final recentProblems = provider.detailedStats?['recentProblems'] 
-        as List<Map<String, dynamic>>? ?? [];
-
+  Widget _buildRecentActivity(LeetBlockProvider provider, BuildContext context) {
+    final recentProblems = provider.detailedStats?['recentProblems'] as List<Map<String, dynamic>>? ?? [];
+    
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent Activity',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  '${recentProblems.length} solved',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: const Color(0xFF4CAF50),
-                  ),
-                ),
-              ],
+          Text(
+            'Recent Activity',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
             ),
           ),
+          const SizedBox(height: 16),
           if (recentProblems.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF252525),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.history_rounded,
-                        size: 32,
-                        color: Colors.white24,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No recent activity',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: Colors.white38,
-                      ),
-                    ),
-                  ],
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'No recent activity',
+                  style: GoogleFonts.inter(color: Colors.white38),
                 ),
               ),
             )
           else
-            ...recentProblems.take(5).toList().asMap().entries.map((entry) {
-              final index = entry.key;
-              final problem = entry.value;
-              final title = problem['title'] ?? 'Unknown Problem';
-              final timestamp = problem['timestamp'] as int? ?? 0;
-              final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-              final timeAgo = _getTimeAgo(date);
-              final isLast = index == math.min(4, recentProblems.length - 1);
+            Column(
+              children: recentProblems.take(5).toList().asMap().entries.map((entry) {
+                final index = entry.key;
+                final problem = entry.value;
+                final title = problem['title'] ?? 'Unknown';
+                final timestamp = problem['timestamp'] as int? ?? 0;
+                final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+                final timeStr = _getTimeAgo(date);
 
-              return InkWell(
-                onTap: () => _showSubmissionDetails(context, problem, timeAgo),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF4CAF50).withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10),
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _showSubmissionDetails(context, problem, _getTimeAgo(date)),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4CAF50).withOpacity(0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, size: 18, color: Color(0xFF4CAF50)),
                             ),
-                            child: const Icon(
-                              Icons.check_rounded,
-                              color: Color(0xFF4CAF50),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  timeAgo,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: Colors.white38,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    timeStr,
+                                    style: GoogleFonts.inter(color: Colors.white38, fontSize: 12),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: Colors.white24,
-                            size: 20,
-                          ),
-                        ],
+                            const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+                          ],
+                        ),
                       ),
-                    ),
-                    if (!isLast)
-                      Divider(
-                        height: 1,
-                        color: Colors.white.withOpacity(0.05),
-                        indent: 72,
-                        endIndent: 20,
-                      ),
-                  ],
-                ),
-              );
-            }).toList(),
-          const SizedBox(height: 8),
+                      if (index < recentProblems.take(5).length - 1)
+                        Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
         ],
       ),
     ).animate().fadeIn(delay: 500.ms);
   }
 
-  void _showSubmissionDetails(BuildContext context, Map<String, dynamic> problem, String timeAgo) {
-    showDialog(
-      context: context,
-      builder: (context) => _SubmissionDetailsDialog(
-        problem: problem,
-        timeAgo: timeAgo,
-      ),
-    );
+  // --- HELPERS ---
+
+  /// Formats duration in ms to "Xh Ym" or "Xm"
+  String _formatDuration(int ms) {
+    final totalMins = (ms / 1000 / 60).round();
+    if (totalMins >= 60) {
+      final hours = totalMins ~/ 60;
+      final mins = totalMins % 60;
+      return "${hours}h ${mins}m";
+    }
+    return "${totalMins}m";
   }
 
+  String _dateKey(DateTime date) {
+    return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+  }
 
-
-
+  String _dayLabel(DateTime date) {
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return days[date.weekday - 1];
+  }
 
   String _getTimeAgo(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-
-    if (difference.inMinutes < 1) {
-      return 'Just now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${date.month}/${date.day}/${date.year}';
-    }
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${date.month}/${date.day}/${date.year}';
   }
 
-  (List<double>, int, String) _getChartData(Map<String, dynamic> stats) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    
-    if (_selectedPeriod == '1D') {
-      // Hourly breakdown for today
-      final recentProblems = stats['recentProblems'] as List<Map<String, dynamic>>? ?? [];
-      final hourlyData = List<double>.filled(24, 0);
-      int total = 0;
-
-      for (var problem in recentProblems) {
-        final timestamp = problem['timestamp'] as int;
-        final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-        
-        if (date.year == today.year && 
-            date.month == today.month && 
-            date.day == today.day) {
-          hourlyData[date.hour]++;
-          total++;
-        }
-      }
-      return (hourlyData, total, 'today');
-    }
-
-    // Parse submission calendar for other periods
-    final calendarJson = stats['submissionCalendar'];
-    Map<int, int> calendar = {};
-    if (calendarJson is String) {
-      try {
-        final Map<String, dynamic> decoded = 
-            Map<String, dynamic>.from(const java_convert.JsonDecoder().convert(calendarJson)); // Use standard jsonDecode if import available, else fix imports
-        decoded.forEach((k, v) {
-          calendar[int.parse(k)] = v as int;
-        });
-      } catch (e) {
-        print('Error parsing calendar: $e');
-      }
-    }
-
-    // Fix 1D Total: Use submissionCalendar for accurate daily total
-    if (_selectedPeriod == '1D') {
-      // Re-calculate total from calendar for today
-      int calendarTotal = 0;
-      calendar.forEach((ts, count) {
-        final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-        if (date.year == today.year && 
-            date.month == today.month && 
-            date.day == today.day) {
-          calendarTotal += count;
-        }
-      });
-      
-      // If calendar has data, use it. Otherwise fallback to recentProblems loop (which might be limited to 50)
-      // Actually, let's trust calendar if it has today's data.
-      // But we still need hourlyData from recentProblems.
-      // So we just update the 'total' returned.
-      
-      // Hourly breakdown for today (re-run logic or reuse from above block if refactored, but here we just update total)
-      final recentProblems = stats['recentProblems'] as List<Map<String, dynamic>>? ?? [];
-      final hourlyData = List<double>.filled(24, 0);
-      
-      for (var problem in recentProblems) {
-        final timestamp = problem['timestamp'] as int;
-        final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-        
-        if (date.year == today.year && 
-            date.month == today.month && 
-            date.day == today.day) {
-          hourlyData[date.hour]++;
-        }
-      }
-      
-      return (hourlyData, calendarTotal > 0 ? calendarTotal : 0, 'today'); // Use calendarTotal
-    }
-
-    List<double> data = [];
-    int total = 0;
-    String label = '';
-
-    if (_selectedPeriod == '1W') {
-      // Last 7 days
-      data = List<double>.filled(7, 0);
-      for (int i = 6; i >= 0; i--) {
-        final day = today.subtract(Duration(days: i));
-        // Find timestamp for this day (approximate match as calendar keys are timestamps)
-        // Actually, calendar keys are unix timestamps. We need to sum up counts for that day.
-        // Optimization: Convert calendar keys to DateTimes once.
-        
-        // Simpler approach: Iterate calendar and bucket
-        // But for 1W we want specific 7 bars.
-        
-        // Let's iterate through the calendar and add to buckets
-        calendar.forEach((ts, count) {
-          final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-          final diff = today.difference(DateTime(date.year, date.month, date.day)).inDays;
-          if (diff >= 0 && diff < 7) {
-            data[6 - diff] += count.toDouble();
-            total += count;
-          }
-        });
-      }
-      label = 'this week';
-    } else if (_selectedPeriod == '1M') {
-      // Last 30 days
-      data = List<double>.filled(30, 0);
-      calendar.forEach((ts, count) {
-        final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-        final diff = today.difference(DateTime(date.year, date.month, date.day)).inDays;
-        if (diff >= 0 && diff < 30) {
-          data[29 - diff] += count.toDouble();
-          total += count;
-        }
-      });
-      label = 'this month';
-    } else if (_selectedPeriod == 'YTD') {
-      // From Jan 1st to now
-      final startOfYear = DateTime(now.year, 1, 1);
-      final daysInYear = today.difference(startOfYear).inDays + 1;
-      // Use fewer points for smoothing, e.g., weeks or months?
-      // For AreaChart, too many points might be messy. Let's do weekly buckets for YTD.
-      final weeks = (daysInYear / 7).ceil();
-      data = List<double>.filled(weeks, 0);
-      
-      calendar.forEach((ts, count) {
-        final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-        if (date.year == now.year) {
-          final diffDays = date.difference(startOfYear).inDays;
-          final weekIndex = (diffDays / 7).floor();
-          if (weekIndex < weeks) {
-            data[weekIndex] += count.toDouble();
-            total += count;
-          }
-        }
-      });
-      label = 'this year';
-    } else if (_selectedPeriod == 'MAX') {
-      // All time, monthly buckets
-      if (calendar.isEmpty) {
-        data = [0.0];
-      } else {
-        final timestamps = calendar.keys.toList()..sort();
-        final firstTs = timestamps.first;
-        final firstDate = DateTime.fromMillisecondsSinceEpoch(firstTs * 1000);
-        final startMonth = DateTime(firstDate.year, firstDate.month);
-        
-        final monthsDiff = (now.year - startMonth.year) * 12 + now.month - startMonth.month + 1;
-        data = List<double>.filled(monthsDiff, 0);
-        
-        calendar.forEach((ts, count) {
-          final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-          final monthIndex = (date.year - startMonth.year) * 12 + date.month - startMonth.month;
-          if (monthIndex >= 0 && monthIndex < monthsDiff) {
-            data[monthIndex] += count.toDouble();
-            total += count;
-          }
-        });
-      }
-      label = 'all time';
-    }
-
-    return (data, total, label);
+  void _showSubmissionDetails(BuildContext context, Map<String, dynamic> problem, String timeAgo) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: Colors.white.withOpacity(0.05)),
+        ),
+        title: Text(
+          problem['title'] ?? 'Submission Details',
+          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDetailRow('Language', problem['lang'] ?? 'N/A'),
+            const SizedBox(height: 12),
+            _buildDetailRow('Runtime', problem['runtime'] ?? 'N/A'),
+            const SizedBox(height: 12),
+            _buildDetailRow('Memory', problem['memory'] ?? 'N/A'),
+            const SizedBox(height: 12),
+            _buildDetailRow('Time', timeAgo),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close', style: GoogleFonts.inter(color: const Color(0xFFFFA116))),
+          )
+        ],
+      )
+    );
   }
 
-  List<String> _getChartLabels() {
-    if (_selectedPeriod == '1D') {
-      return ['00', '04', '08', '12', '16', '20', '23'];
-    } else if (_selectedPeriod == '1W') {
-      final now = DateTime.now();
-      return List.generate(7, (i) {
-        final date = now.subtract(Duration(days: 6 - i));
-        return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1];
-      });
-    } else if (_selectedPeriod == '1M') {
-      return ['30d', '20d', '10d', 'Today'];
-    } else if (_selectedPeriod == 'YTD') {
-      return ['Jan', 'Apr', 'Jul', 'Oct', 'Now'];
-    } else {
-      return ['Start', 'Now'];
-    }
-  }
-
-  String _getTooltipLabel(int index) {
-    if (_selectedPeriod == '1D') {
-      return '${index.toString().padLeft(2, '0')}:00';
-    } else if (_selectedPeriod == '1W') {
-      final now = DateTime.now();
-      final date = now.subtract(Duration(days: 6 - index));
-      return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1];
-    } else if (_selectedPeriod == '1M') {
-      return '${30 - index} days ago';
-    } else if (_selectedPeriod == 'YTD') {
-      return 'Week $index';
-    } else {
-      return 'Month $index';
-    }
+  Widget _buildDetailRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: GoogleFonts.inter(color: Colors.white54)),
+        Text(value, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w500)),
+      ],
+    );
   }
 }
 
-// Custom Area Chart Painter
 class AreaChartPainter extends CustomPainter {
   final List<double> data;
   final Color lineColor;
   final Color fillColor;
-
   final int? hoverIndex;
 
   AreaChartPainter({
@@ -1006,184 +1218,85 @@ class AreaChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
-
-    final maxValue = data.reduce((a, b) => a > b ? a : b);
-    final normalizedData = maxValue > 0 
-        ? data.map((v) => v / maxValue).toList()
-        : data.map((v) => 0.0).toList();
-
+    
     final path = Path();
     final fillPath = Path();
-    final pointSpacing = size.width / (data.length - 1);
+    final width = size.width;
+    final height = size.height;
+    final pointWidth = width / (data.length - 1);
+    
+    // Find max value for normalization
+    double maxVal = data.reduce(math.max);
+    if (maxVal == 0) maxVal = 1;
 
-    // Start fill path at bottom left
-    fillPath.moveTo(0, size.height);
+    // Build path
+    path.moveTo(0, height - (data[0] / maxVal * height));
+    fillPath.moveTo(0, height);
+    fillPath.lineTo(0, height - (data[0] / maxVal * height));
 
-    for (int i = 0; i < normalizedData.length; i++) {
-      final x = i * pointSpacing;
-      final y = size.height - (normalizedData[i] * size.height * 0.8) - 10;
-
-      if (i == 0) {
-        path.moveTo(x, y);
-        fillPath.lineTo(x, y);
-      } else {
-        // Smooth curve
-        final prevX = (i - 1) * pointSpacing;
-        final prevY = size.height - (normalizedData[i - 1] * size.height * 0.8) - 10;
-        final controlX1 = prevX + (x - prevX) / 2;
-        final controlX2 = prevX + (x - prevX) / 2;
-
-        path.cubicTo(controlX1, prevY, controlX2, y, x, y);
-        fillPath.cubicTo(controlX1, prevY, controlX2, y, x, y);
-      }
+    for (int i = 1; i < data.length; i++) {
+      final x = i * pointWidth;
+      final y = height - (data[i] / maxVal * height);
+      
+      // Curved lines using quadratic bezier
+      final prevX = (i - 1) * pointWidth;
+      final prevY = height - (data[i - 1] / maxVal * height);
+      final controlX = prevX + (x - prevX) / 2;
+      
+      path.cubicTo(controlX, prevY, controlX, y, x, y);
+      fillPath.cubicTo(controlX, prevY, controlX, y, x, y);
     }
-
-    // Complete fill path
-    fillPath.lineTo(size.width, size.height);
+    
+    fillPath.lineTo(width, height);
     fillPath.close();
 
-    // Draw fill
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [fillColor, fillColor.withOpacity(0)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawPath(fillPath, fillPaint);
+    // Draw fill gradient
+    final gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [fillColor, fillColor.withOpacity(0.0)],
+      stops: const [0.0, 0.9],
+    );
+    
+    final paintFill = Paint()
+      ..shader = gradient.createShader(Rect.fromLTWH(0, 0, width, height))
+      ..style = PaintingStyle.fill;
+      
+    canvas.drawPath(fillPath, paintFill);
 
     // Draw line
-    final linePaint = Paint()
+    final paintLine = Paint()
       ..color = lineColor
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(path, linePaint);
-
-    // Draw dots at data points
-    final dotPaint = Paint()..color = lineColor;
-    for (int i = 0; i < normalizedData.length; i++) {
-      if (data[i] > 0) {
-        final x = i * pointSpacing;
-        final y = size.height - (normalizedData[i] * size.height * 0.8) - 10;
-        canvas.drawCircle(Offset(x, y), 4, dotPaint);
-        canvas.drawCircle(
-          Offset(x, y), 
-          2, 
-          Paint()..color = const Color(0xFF1E1E1E),
-        );
-      }
-    }
-
-    // Draw hover indicator
-    if (hoverIndex != null && hoverIndex! < normalizedData.length) {
-      final i = hoverIndex!;
-      final x = i * pointSpacing;
-      final y = size.height - (normalizedData[i] * size.height * 0.8) - 10;
-
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+      
+    canvas.drawPath(path, paintLine);
+    
+    // Draw Hover Indicator
+    if (hoverIndex != null && hoverIndex! < data.length) {
+      final x = hoverIndex! * pointWidth;
+      final y = height - (data[hoverIndex!] / maxVal * height);
+      
+      canvas.drawCircle(Offset(x, y), 5, Paint()..color = Colors.white);
+      canvas.drawCircle(Offset(x, y), 3, Paint()..color = lineColor);
+      
       // Vertical line
-      final linePaint = Paint()
-        ..color = Colors.white.withOpacity(0.2)
+      final dashPaint = Paint()
+        ..color = Colors.white24
         ..strokeWidth = 1
         ..style = PaintingStyle.stroke;
       
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        linePaint,
-      );
-
-      // Highlight dot
-      canvas.drawCircle(Offset(x, y), 6, Paint()..color = lineColor);
-      canvas.drawCircle(Offset(x, y), 3, Paint()..color = const Color(0xFF1E1E1E));
+      double dy = y + 8;
+      while (dy < height) {
+        canvas.drawLine(Offset(x, dy), Offset(x, math.min(dy + 4, height)), dashPaint);
+        dy += 8;
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class _SubmissionDetailsDialog extends StatefulWidget {
-  final Map<String, dynamic> problem;
-  final String timeAgo;
-
-  const _SubmissionDetailsDialog({
-    required this.problem,
-    required this.timeAgo,
-  });
-
-  @override
-  State<_SubmissionDetailsDialog> createState() => _SubmissionDetailsDialogState();
-}
-
-class _SubmissionDetailsDialogState extends State<_SubmissionDetailsDialog> {
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withOpacity(0.05)),
-      ),
-      title: Text(
-        widget.problem['title'] ?? 'Submission Details',
-        style: GoogleFonts.inter(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow('Language', widget.problem['lang'] ?? 'N/A'),
-              const SizedBox(height: 12),
-              _buildDetailRow('Runtime', widget.problem['runtime'] ?? 'N/A'),
-              const SizedBox(height: 12),
-              _buildDetailRow('Memory', widget.problem['memory'] ?? 'N/A'),
-              const SizedBox(height: 12),
-              _buildDetailRow('Time', widget.timeAgo),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Close',
-            style: GoogleFonts.inter(
-              color: const Color(0xFFFFA116),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: Colors.white54,
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
+  bool shouldRepaint(covariant AreaChartPainter oldDelegate) => 
+      oldDelegate.data != data || oldDelegate.hoverIndex != hoverIndex;
 }

@@ -6,6 +6,9 @@ class LeetCodeStats {
   final int hardSolved;
   final int recentSubmissions;
   final DateTime lastFetched;
+  final int totalEasy;
+  final int totalMedium;
+  final int totalHard;
 
   LeetCodeStats({
     required this.username,
@@ -15,6 +18,9 @@ class LeetCodeStats {
     required this.hardSolved,
     required this.recentSubmissions,
     required this.lastFetched,
+    this.totalEasy = 0,
+    this.totalMedium = 0,
+    this.totalHard = 0,
   });
 
   factory LeetCodeStats.empty(String username) {
@@ -38,6 +44,9 @@ class LeetCodeStats {
       'hardSolved': hardSolved,
       'recentSubmissions': recentSubmissions,
       'lastFetched': lastFetched.toIso8601String(),
+      'totalEasy': totalEasy,
+      'totalMedium': totalMedium,
+      'totalHard': totalHard,
     };
   }
 
@@ -52,6 +61,9 @@ class LeetCodeStats {
       lastFetched: json['lastFetched'] != null
           ? DateTime.parse(json['lastFetched'])
           : DateTime.now(),
+      totalEasy: json['totalEasy'] ?? 0,
+      totalMedium: json['totalMedium'] ?? 0,
+      totalHard: json['totalHard'] ?? 0,
     );
   }
 }
@@ -75,6 +87,9 @@ class DailyProgress {
   });
 
   bool get isQuotaMet => questionsCompletedToday >= (dailyQuota + quotaPenalty);
+  
+  /// Returns true if base quota is met (ignoring penalty) - used for weekly goal tracking
+  bool get isBaseQuotaMet => questionsCompletedToday >= dailyQuota;
 
   Map<String, dynamic> toJson() {
     return {
