@@ -73,10 +73,11 @@ class PenaltySettingsScreen extends StatelessWidget {
                         Switch(
                           value: provider.penaltyEnabled,
                           onChanged: (value) => provider.setPenaltyEnabled(value),
-                          activeColor: const Color(0xFFFFA116), // Changed to orange
+                          activeColor: const Color(0xFFFFA116),
                           activeTrackColor: const Color(0xFFFFA116).withOpacity(0.3),
                           inactiveThumbColor: Colors.white38,
                           inactiveTrackColor: Colors.white12,
+                          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                         ),
                       ],
                     ),

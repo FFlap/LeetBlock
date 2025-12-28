@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -70,33 +71,21 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0D1117),
-              Color(0xFF161B22),
-              Color(0xFF0D1117),
+      backgroundColor: const Color(0xFF121212),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 40),
+              _buildStepIndicator(),
+              const SizedBox(height: 40),
+              Expanded(
+                child: _buildCurrentStep(),
+              ),
             ],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 40),
-                _buildStepIndicator(),
-                const SizedBox(height: 40),
-                Expanded(
-                  child: _buildCurrentStep(),
-                ),
-              ],
-            ),
           ),
         ),
       ),
@@ -107,43 +96,23 @@ class _SetupScreenState extends State<SetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFA116).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFFFA116).withOpacity(0.3),
-                ),
-              ),
-              child: const Icon(
-                Icons.code,
-                color: Color(0xFFFFA116),
-                size: 32,
+            Text(
+              'LeetBlock',
+              style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'LeetBlock',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  'Discipline through code',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white54,
-                  ),
-                ),
-              ],
+            Text(
+              'Discipline through code',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.white54,
+              ),
             ),
           ],
         ).animate().fadeIn(duration: 600.ms).slideX(begin: -0.2),
@@ -171,7 +140,7 @@ class _SetupScreenState extends State<SetupScreen> {
       height: 40,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isActive ? const Color(0xFFFFA116) : const Color(0xFF21262D),
+        color: isActive ? const Color(0xFFFFA116) : const Color(0xFF1E1E1E),
         border: Border.all(
           color: isCurrent ? const Color(0xFFFFA116) : Colors.transparent,
           width: 2,
@@ -195,7 +164,7 @@ class _SetupScreenState extends State<SetupScreen> {
               )
             : Text(
                 '${step + 1}',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   color: Colors.white54,
                   fontWeight: FontWeight.bold,
                 ),
@@ -227,7 +196,7 @@ class _SetupScreenState extends State<SetupScreen> {
         height: 3,
         margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFFFFA116) : const Color(0xFF21262D),
+          color: isActive ? const Color(0xFFFFA116) : const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -259,7 +228,7 @@ class _SetupScreenState extends State<SetupScreen> {
             children: [
               Text(
                 'Enter your LeetCode username',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -268,7 +237,7 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               Text(
                 'We\'ll track your daily progress to unlock apps',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 14,
                   color: Colors.white54,
                 ),
@@ -276,21 +245,17 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 32),
               TextFormField(
                 controller: _usernameController,
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   color: Colors.white,
                   fontSize: 18,
                 ),
                 decoration: InputDecoration(
                   hintText: 'username',
-                  hintStyle: TextStyle(
+                  hintStyle: GoogleFonts.inter(
                     color: Colors.white30,
                   ),
-                  prefixIcon: const Icon(
-                    Icons.alternate_email,
-                    color: Color(0xFFFFA116),
-                  ),
                   filled: true,
-                  fillColor: const Color(0xFF21262D),
+                  fillColor: const Color(0xFF1E1E1E),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide.none,
@@ -302,7 +267,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       width: 2,
                     ),
                   ),
-                  errorStyle: TextStyle(
+                  errorStyle: GoogleFonts.inter(
                     color: const Color(0xFFFF6B6B),
                   ),
                 ),
@@ -334,7 +299,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       Expanded(
                         child: Text(
                           provider.error!,
-                          style: TextStyle(
+                          style: GoogleFonts.inter(
                             color: const Color(0xFFFF6B6B),
                           ),
                         ),
@@ -368,7 +333,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         )
                       : Text(
                           'Continue',
-                          style: TextStyle(
+                          style: GoogleFonts.inter(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -388,7 +353,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Set your daily quota',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -397,7 +362,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'How many LeetCode problems must you solve daily?',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -408,7 +373,7 @@ class _SetupScreenState extends State<SetupScreen> {
             children: [
               Text(
                 '$_selectedQuota',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 72,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFFFFA116),
@@ -416,7 +381,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ).animate().fadeIn(delay: 200.ms).scale(),
               Text(
                 _selectedQuota == 1 ? 'problem per day' : 'problems per day',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 16,
                   color: Colors.white54,
                 ),
@@ -427,7 +392,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: const Color(0xFFFFA116),
-                    inactiveTrackColor: const Color(0xFF21262D),
+                    inactiveTrackColor: const Color(0xFF252525),
                     thumbColor: const Color(0xFFFFA116),
                     overlayColor: const Color(0xFFFFA116).withOpacity(0.2),
                     trackHeight: 8,
@@ -447,18 +412,21 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
               ).animate().fadeIn(delay: 300.ms),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '1',
-                    style: TextStyle(color: Colors.white38),
-                  ),
-                  Text(
-                    '10',
-                    style: TextStyle(color: Colors.white38),
-                  ),
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '1',
+                      style: GoogleFonts.inter(color: Colors.white38),
+                    ),
+                    Text(
+                      '10',
+                      style: GoogleFonts.inter(color: Colors.white38),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -479,7 +447,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Continue',
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -496,7 +464,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Enable Notifications',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -505,7 +473,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'We need this to warn you before penalties and show the persistent blocker notification.',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -519,7 +487,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF21262D),
+                    color: const Color(0xFF1E1E1E),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -531,7 +499,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Stay informed!',
-                  style: TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 18,
                     color: Colors.white70,
                   ),
@@ -555,7 +523,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Enable Notifications',
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -572,7 +540,7 @@ class _SetupScreenState extends State<SetupScreen> {
             },
             child: Text(
               'Skip for now',
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 color: Colors.white38,
                 fontSize: 14,
               ),
@@ -589,7 +557,7 @@ class _SetupScreenState extends State<SetupScreen> {
       children: [
         Text(
           'Select apps to block',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -598,7 +566,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'These apps will be blocked until you complete your daily quota',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 14,
             color: Colors.white54,
           ),
@@ -612,7 +580,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF21262D),
+                    color: const Color(0xFF1E1E1E),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -624,7 +592,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Choose wisely!',
-                  style: TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 18,
                     color: Colors.white70,
                   ),
@@ -648,7 +616,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             child: Text(
               'Select Apps',
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -659,4 +627,3 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 }
-

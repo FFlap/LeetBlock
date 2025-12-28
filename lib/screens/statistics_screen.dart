@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -324,7 +325,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Screen Time of Blocked Apps',
+            'Blocked App Usage',
             style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -511,13 +512,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
              Row(
                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                children: [
-                  Text(
-                    "Total Apps Time · $_dateKeyDisplay",
-                    style: GoogleFonts.inter(
-                      fontSize: 16, 
-                      fontWeight: FontWeight.w600, 
-                      color: Colors.white
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Usage by App",
+                        style: GoogleFonts.inter(
+                          fontSize: 16, 
+                          fontWeight: FontWeight.w600, 
+                          color: Colors.white
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _dateKeyDisplay,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                   Text(
                     totalTimeStr,
@@ -620,11 +635,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
      if (_selectedDate.year == now.year && _selectedDate.month == now.month && _selectedDate.day == now.day - 1) {
        return "Yesterday";
      }
-     return "${_selectedDate.month}/${_selectedDate.day}";
+     return DateFormat('MMM d').format(_selectedDate);
   }
   
   String _getDateRangeLabel(DateTime start, DateTime end) {
-    return "${start.month}/${start.day} - ${end.month}/${end.day}";
+    return "${DateFormat('MMM d').format(start)} - ${DateFormat('MMM d').format(end)}";
   }
 
   Widget _periodButton(String period) {

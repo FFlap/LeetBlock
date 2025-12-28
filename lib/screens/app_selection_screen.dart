@@ -25,27 +25,15 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0D1117),
-              Color(0xFF161B22),
-              Color(0xFF0D1117),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(),
-              _buildSearchBar(),
-              Expanded(child: _buildAppsList()),
-              _buildDoneButton(),
-            ],
-          ),
+      backgroundColor: const Color(0xFF121212),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            _buildSearchBar(),
+            Expanded(child: _buildAppsList()),
+            _buildDoneButton(),
+          ],
         ),
       ),
     );
@@ -103,7 +91,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
           hintStyle: GoogleFonts.inter(color: Colors.white30),
           prefixIcon: const Icon(Icons.search, color: Colors.white38),
           filled: true,
-          fillColor: const Color(0xFF21262D),
+          fillColor: const Color(0xFF1E1E1E),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide.none,
@@ -176,7 +164,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
       decoration: BoxDecoration(
         color: app.isBlocked
             ? const Color(0xFFFFA116).withOpacity(0.1)
-            : const Color(0xFF21262D),
+            : const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: app.isBlocked
@@ -193,7 +181,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(12),
           ),
           child: app.icon != null
