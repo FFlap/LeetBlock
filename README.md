@@ -7,6 +7,7 @@ LeetBlock is a productivity app that helps you build consistent coding habits by
 
 - **Daily Quota System** - Set a daily goal
 - **App Blocking** - Select which apps to block until quota is met
+- **Problem Lists** - Create custom lists or use built-in NeetCode 250 or Blind 75 for structured practice
 - **LeetCode Stats** - Track your total solved problems (Easy/Medium/Hard)
 
 ## How It Works
