@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/leet_block_provider.dart';
+import 'settings/quota_settings_screen.dart';
+import 'settings/penalty_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,17 +15,20 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late int _selectedQuota;
-  late TextEditingController _messageController;
+  int? _tempQuota;
 
   @override
   void initState() {
     super.initState();
-    final provider = context.read<LeetBlockProvider>();
-    _selectedQuota = provider.dailyQuota;
-    _selectedQuota = provider.dailyQuota;
-    _messageController = TextEditingController(text: provider.blockMessage);
     _checkPermissionStatus();
+    // Initialize temp quota from provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _tempQuota = context.read<LeetBlockProvider>().dailyQuota;
+        });
+      }
+    });
   }
 
   Future<void> _checkPermissionStatus() async {
@@ -36,177 +41,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isNotificationEnabled = false;
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildUserSection(),
-                  const SizedBox(height: 16),
-                  _buildQuotaSection(),
-                  const SizedBox(height: 16),
-                  _buildDailyProgressSection(),
-                  const SizedBox(height: 16),
-                  _buildBlockMessageSection(),
-                  const SizedBox(height: 16),
-                  _buildStrictModeSection(),
-                  const SizedBox(height: 16),
-                  _buildPenaltySection(),
-                  const SizedBox(height: 16),
-                  _buildDangerZone(),
-                  const SizedBox(height: 32),
-                ],
-              ),
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        if (didPop && _tempQuota != null) {
+          // Commit quota change when leaving screen
+          final provider = context.read<LeetBlockProvider>();
+          if (_tempQuota != provider.dailyQuota) {
+            await provider.setDailyQuota(_tempQuota!);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white70),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Settings',
+            style: GoogleFonts.inter(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
             ),
-          ],
+          ),
+        ),
+        body: Consumer<LeetBlockProvider>(
+          builder: (context, provider, _) {
+            // Ensure tempQuota is synced if it hasn't been initialized yet
+            final currentQuota = _tempQuota ?? provider.dailyQuota;
+            
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _buildAccountCard(provider),
+                const SizedBox(height: 32),
+                
+                _buildSectionHeader('Focus'),
+                _buildQuotaSection(context, currentQuota, provider), // Pass provider too
+                _buildSettingTile(
+                  icon: Icons.message_outlined,
+                  title: 'Block Message',
+                  subtitle: provider.blockMessage,
+                  onTap: () => _showBlockMessageDialog(context, provider),
+                ),
+                _buildSettingTile(
+                  icon: Icons.timer_outlined,
+                  title: 'Usage Penalty',
+                  subtitle: provider.penaltyEnabled 
+                      ? 'Enabled • ${provider.penaltyThreshold}m limit' 
+                      : 'Disabled',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PenaltySettingsScreen()),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildStrictModeTile(context, provider),
+
+                const SizedBox(height: 32),
+                _buildSectionHeader('App'),
+                _buildSettingTile(
+                  icon: Icons.notifications_none,
+                  title: 'Notifications',
+                  subtitle: _isNotificationEnabled ? 'Enabled' : 'Disabled',
+                  onTap: openAppSettings,
+                ),
+                const SizedBox(height: 32),
+                _buildDangerZone(provider),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
-              padding: EdgeInsets.zero,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'Settings',
-            style: GoogleFonts.inter(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ],
+  Widget _buildAccountCard(LeetBlockProvider provider) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-    ).animate().fadeIn();
-  }
-
-
-
-  Widget _buildUserSection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Account',
+                'LeetCode Username',
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   color: Colors.white54,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFA116).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      color: Color(0xFFFFA116),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'LeetCode Username',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: Colors.white54,
-                          ),
-                        ),
-                        Text(
-                          provider.username,
-                          style: GoogleFonts.inter(
-                            fontSize: 18,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (provider.currentStats != null) ...[
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildMiniStat(
-                      'Total',
-                      '${provider.currentStats!.totalSolved}',
-                    ),
-                    _buildMiniStat(
-                      'Easy',
-                      '${provider.currentStats!.easySolved}',
-                    ),
-                    _buildMiniStat(
-                      'Medium',
-                      '${provider.currentStats!.mediumSolved}',
-                    ),
-                    _buildMiniStat(
-                      'Hard',
-                      '${provider.currentStats!.hardSolved}',
-                    ),
-                  ],
+              Text(
+                provider.username,
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
                 ),
-
-              ],
+              ),
             ],
           ),
-        ).animate().fadeIn(delay: 300.ms);
-      },
-    );
+          if (provider.currentStats != null) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildMiniStat(
+                  'Total',
+                  '${provider.currentStats!.totalSolved}',
+                ),
+                _buildMiniStat(
+                  'Easy',
+                  '${provider.currentStats!.easySolved}',
+                ),
+                _buildMiniStat(
+                  'Medium',
+                  '${provider.currentStats!.mediumSolved}',
+                ),
+                _buildMiniStat(
+                  'Hard',
+                  '${provider.currentStats!.hardSolved}',
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    ).animate().fadeIn();
   }
 
-  Widget _buildMiniStat(String label, String value) {
+  Widget _buildMiniStat(String label, String value, {Color? color}) {
     return Column(
       children: [
         Text(
@@ -214,458 +192,643 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: GoogleFonts.inter(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: color ?? Colors.white,
           ),
         ),
+        const SizedBox(height: 4),
         Text(
           label,
           style: GoogleFonts.inter(
-            fontSize: 12,
-            color: Colors.white38,
+            fontSize: 11,
+            color: Colors.white54,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDailyProgressSection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        final completed = provider.questionsCompletedToday;
-        final quota = provider.dailyQuota;
-        final isComplete = provider.isQuotaMet;
-        final offset = provider.manualOffset;
-        
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+  
+  // Quota Section with Edit Today's Progress button
+  Widget _buildQuotaSection(BuildContext context, int currentQuota, LeetBlockProvider provider) {
+    final completed = provider.questionsCompletedToday;
+    final isComplete = provider.isQuotaMet;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Daily Quota',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              '$currentQuota',
+              style: GoogleFonts.inter(
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFFFA116),
+              ),
+            ),
+          ),
+          Center(
+            child: Text(
+              currentQuota == 1
+                  ? 'problem per day'
+                  : 'problems per day',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.white54,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: const Color(0xFFFFA116),
+              inactiveTrackColor: const Color(0xFF252525),
+              thumbColor: const Color(0xFFFFA116),
+              overlayColor: const Color(0xFFFFA116).withOpacity(0.2),
+              trackHeight: 8,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 14,
+              ),
+            ),
+            child: Slider(
+              value: currentQuota.toDouble(),
+              min: 1,
+              max: 10,
+              divisions: 9,
+              onChanged: (value) {
+                setState(() => _tempQuota = value.round());
+              },
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Today\'s Progress',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.white54,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (isComplete)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF238636).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '✓ Complete',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: const Color(0xFF3FB950),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                ],
+              Text('1', style: GoogleFonts.inter(color: Colors.white38)),
+              Text('10', style: GoogleFonts.inter(color: Colors.white38)),
+            ],
+          ),
+          // Edit Today's Progress - simple text link
+          Center(
+            child: TextButton(
+              onPressed: () => _showTodaysProgressSheet(context, provider),
+              child: Text(
+                'Edit Today\'s Progress',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: Colors.white38,
+                ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Decrement button
-                  IconButton(
-                    onPressed: completed > 0 
-                        ? () => provider.adjustCompletedCount(-1)
-                        : null,
-                    style: IconButton.styleFrom(
-                      backgroundColor: completed > 0 
-                          ? const Color(0xFF252525)
-                          : Colors.transparent,
-                      disabledBackgroundColor: Colors.transparent,
-                    ),
-                    icon: Icon(
-                      Icons.remove,
-                      color: completed > 0 
-                          ? Colors.white70 
-                          : Colors.white24,
-                      size: 28,
-                    ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 150.ms);
+  }
+
+  void _showTodaysProgressSheet(BuildContext context, LeetBlockProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Consumer<LeetBlockProvider>(
+        builder: (context, provider, _) {
+          final completed = provider.questionsCompletedToday;
+          final quota = provider.dailyQuota;
+          final isComplete = provider.isQuotaMet;
+          final offset = provider.manualOffset;
+          
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(width: 24),
-                  // Count display
-                  Column(
-                    children: [
-                      Text(
-                        '$completed',
-                        style: GoogleFonts.inter(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          color: isComplete 
-                              ? const Color(0xFF3FB950)
-                              : const Color(0xFFFFA116),
-                        ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Today\'s Progress',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
-                      Text(
-                        'of $quota',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: Colors.white38,
+                    ),
+                    if (isComplete)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF238636).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 24),
-                  // Increment button
-                  IconButton(
-                    onPressed: () => provider.adjustCompletedCount(1),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF252525),
-                    ),
-                    icon: const Icon(
-                      Icons.add,
-                      color: Colors.white70,
-                      size: 28,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Show offset if non-zero
-              if (offset != 0) ...[
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: offset < 0 
-                          ? const Color(0xFFFF6B6B).withOpacity(0.15)
-                          : const Color(0xFF238636).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          offset < 0 ? Icons.trending_down : Icons.trending_up,
-                          size: 14,
-                          color: offset < 0 
-                              ? const Color(0xFFFF6B6B)
-                              : const Color(0xFF3FB950),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Manual adjustment: ${offset > 0 ? '+' : ''}$offset',
-                          style: GoogleFonts.jetBrainsMono(
+                        child: Text(
+                          '✓ Complete',
+                          style: GoogleFonts.inter(
                             fontSize: 12,
-                            color: offset < 0 
-                                ? const Color(0xFFFF6B6B)
-                                : const Color(0xFF3FB950),
+                            color: const Color(0xFF3FB950),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: completed > 0 
+                          ? () => provider.adjustCompletedCount(-1)
+                          : null,
+                      style: IconButton.styleFrom(
+                        backgroundColor: completed > 0 
+                            ? const Color(0xFF252525)
+                            : Colors.transparent,
+                        disabledBackgroundColor: Colors.transparent,
+                      ),
+                      icon: Icon(
+                        Icons.remove,
+                        color: completed > 0 
+                            ? Colors.white70 
+                            : Colors.white24,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+                    Column(
+                      children: [
+                        Text(
+                          '$completed',
+                          style: GoogleFonts.inter(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: isComplete 
+                                ? const Color(0xFF3FB950)
+                                : const Color(0xFFFFA116),
+                          ),
+                        ),
+                        Text(
+                          'of $quota',
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            color: Colors.white38,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: TextButton(
-                    onPressed: () => provider.resetManualOffset(),
-                    child: Text(
-                      'Reset adjustment',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: Colors.white38,
+                    const SizedBox(width: 32),
+                    IconButton(
+                      onPressed: () => provider.adjustCompletedCount(1),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFF252525),
+                      ),
+                      icon: const Icon(
+                        Icons.add,
+                        color: Colors.white70,
+                        size: 28,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ] else ...[
-                const SizedBox(height: 4),
-                Center(
-                  child: Text(
-                    'Adjustments persist through refreshes',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: Colors.white38,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ).animate().fadeIn(delay: 200.ms);
-      },
-    );
-  }
-
-  Widget _buildQuotaSection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Daily Quota',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.white54,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: Text(
-                  '$_selectedQuota',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFFFA116),
-                  ),
-                ),
-              ),
-              Center(
-                child: Text(
-                  _selectedQuota == 1
-                      ? 'problem per day'
-                      : 'problems per day',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: Colors.white54,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: const Color(0xFFFFA116),
-                  inactiveTrackColor: const Color(0xFF252525),
-                  thumbColor: const Color(0xFFFFA116),
-                  overlayColor: const Color(0xFFFFA116).withOpacity(0.2),
-                  trackHeight: 8,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 14,
-                  ),
-                ),
-                child: Slider(
-                  value: _selectedQuota.toDouble(),
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  onChanged: (value) {
-                    setState(() => _selectedQuota = value.round());
-                  },
-                  onChangeEnd: (value) async {
-                    await provider.setDailyQuota(value.round());
-                  },
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('1', style: GoogleFonts.jetBrainsMono(color: Colors.white38)),
-                  Text('10', style: GoogleFonts.jetBrainsMono(color: Colors.white38)),
-                ],
-              ),
-            ],
-          ),
-        ).animate().fadeIn(delay: 150.ms);
-      },
-    );
-  }
-
-  Widget _buildBlockMessageSection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Block Screen Message',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.white54,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Customize the message shown when apps are blocked',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.white38,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _messageController,
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
-                textAlign: TextAlign.center,
-                maxLength: 30,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: const Color(0xFF252525),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFFFA116)),
-                  ),
-                  hintText: 'LOCK IN',
-                  hintStyle: GoogleFonts.inter(
-                    color: Colors.white24,
-                  ),
-                  counterStyle: GoogleFonts.inter(
-                    color: Colors.white38,
-                    fontSize: 11,
-                  ),
-                ),
-                onChanged: (value) {
-                  provider.setBlockMessage(value.isEmpty ? 'LOCK IN' : value);
-                },
-              ),
-            ],
-          ),
-        ).animate().fadeIn(delay: 250.ms);
-      },
-    );
-  }
-
-  Widget _buildStrictModeSection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: provider.strictMode 
-                  ? const Color(0xFFFFA116).withOpacity(0.5)
-                  : Colors.white.withOpacity(0.05),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.security,
-                    color: Color(0xFFFFA116),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Strict Mode',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: const Color(0xFFFFA116),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Block this app too until quota is met. Prevents lowering quota to cheat.',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: Colors.white54,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    provider.strictMode ? 'Enabled' : 'Disabled',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: provider.strictMode 
-                          ? const Color(0xFFFFA116)
-                          : Colors.white38,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Switch(
-                    value: provider.strictMode,
-                    onChanged: (value) {
-                      if (value) {
-                        _showStrictModeWarning(provider);
-                      } else {
-                        provider.setStrictMode(false);
-                      }
-                    },
-                    activeColor: const Color(0xFFFFA116),
-                    activeTrackColor: const Color(0xFFFFA116).withOpacity(0.3),
-                    inactiveThumbColor: Colors.white38,
-                    inactiveTrackColor: Colors.white12,
-                  ),
-                ],
-              ),
-              if (provider.strictMode) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFA116).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+                // Always reserve space to prevent sheet resizing
+                const SizedBox(height: 24),
+                AnimatedOpacity(
+                  opacity: offset != 0 ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 150),
+                  child: Column(
                     children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        color: Color(0xFFFFA116),
-                        size: 18,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: offset < 0 
+                              ? const Color(0xFFFF6B6B).withOpacity(0.15)
+                              : const Color(0xFF238636).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              offset < 0 ? Icons.trending_down : Icons.trending_up,
+                              size: 14,
+                              color: offset < 0 
+                                  ? const Color(0xFFFF6B6B)
+                                  : const Color(0xFF3FB950),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              offset != 0 
+                                  ? 'Manual adjustment: ${offset > 0 ? '+' : ''}$offset'
+                                  : 'No adjustment',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: offset < 0 
+                                    ? const Color(0xFFFF6B6B)
+                                    : const Color(0xFF3FB950),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
+                      TextButton(
+                        onPressed: offset != 0 ? () => provider.resetManualOffset() : null,
                         child: Text(
-                          'You won\'t be able to access this app until you complete your daily quota!',
+                          'Reset adjustment',
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            color: const Color(0xFFFFA116),
+                            color: offset != 0 ? Colors.white38 : Colors.transparent,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
               ],
-            ],
-          ),
-        ).animate().fadeIn(delay: 275.ms);
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
-  void _showStrictModeWarning(LeetBlockProvider provider) {
+  // Today's Progress section with +/- buttons
+  Widget _buildDailyProgressSection(LeetBlockProvider provider) {
+    final completed = provider.questionsCompletedToday;
+    final quota = provider.dailyQuota;
+    final isComplete = provider.isQuotaMet;
+    final offset = provider.manualOffset;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Today\'s Progress',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (isComplete)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF238636).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '✓ Complete',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: const Color(0xFF3FB950),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Decrement button
+              IconButton(
+                onPressed: completed > 0 
+                    ? () => provider.adjustCompletedCount(-1)
+                    : null,
+                style: IconButton.styleFrom(
+                  backgroundColor: completed > 0 
+                      ? const Color(0xFF252525)
+                      : Colors.transparent,
+                  disabledBackgroundColor: Colors.transparent,
+                ),
+                icon: Icon(
+                  Icons.remove,
+                  color: completed > 0 
+                      ? Colors.white70 
+                      : Colors.white24,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 24),
+              // Count display
+              Column(
+                children: [
+                  Text(
+                    '$completed',
+                    style: GoogleFonts.inter(
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold,
+                      color: isComplete 
+                          ? const Color(0xFF3FB950)
+                          : const Color(0xFFFFA116),
+                    ),
+                  ),
+                  Text(
+                    'of $quota',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.white38,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 24),
+              // Increment button
+              IconButton(
+                onPressed: () => provider.adjustCompletedCount(1),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF252525),
+                ),
+                icon: const Icon(
+                  Icons.add,
+                  color: Colors.white70,
+                  size: 28,
+                ),
+              ),
+            ],
+          ),
+          if (offset != 0) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: offset < 0 
+                      ? const Color(0xFFFF6B6B).withOpacity(0.15)
+                      : const Color(0xFF238636).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      offset < 0 ? Icons.trending_down : Icons.trending_up,
+                      size: 14,
+                      color: offset < 0 
+                          ? const Color(0xFFFF6B6B)
+                          : const Color(0xFF3FB950),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Manual adjustment: ${offset > 0 ? '+' : ''}$offset',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: offset < 0 
+                            ? const Color(0xFFFF6B6B)
+                            : const Color(0xFF3FB950),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton(
+                onPressed: () => provider.resetManualOffset(),
+                child: Text(
+                  'Reset adjustment',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: Colors.white38,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ).animate().fadeIn(delay: 200.ms);
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      child: Text(
+        title.toUpperCase(),
+        style: GoogleFonts.inter(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.white38,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    required VoidCallback onTap,
+    Color? iconColor,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: iconColor ?? Colors.white54, size: 22),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.white38,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null)
+                trailing
+              else
+                const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn();
+  }
+
+  Widget _buildStrictModeTile(BuildContext context, LeetBlockProvider provider) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.05),
+        ),
+      ),
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          'Strict Mode',
+          style: GoogleFonts.inter(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: Colors.white, // Fixed color to white
+          ),
+        ),
+        subtitle: Text(
+          provider.strictMode 
+              ? 'App blocked until quota met'
+              : 'Blocks only listed apps',
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            color: Colors.white38, // Fixed color to white38
+          ),
+        ),
+        secondary: Icon(
+          Icons.security,
+          color: Colors.white54, // Fixed color to white54
+          size: 22,
+        ),
+        value: provider.strictMode,
+        onChanged: (value) {
+          if (value) {
+            _showStrictModeWarning(context, provider);
+          } else {
+            provider.setStrictMode(false);
+          }
+        },
+        activeColor: const Color(0xFFFFA116),
+        activeTrackColor: const Color(0xFFFFA116).withOpacity(0.3),
+        inactiveThumbColor: Colors.white38,
+        inactiveTrackColor: Colors.white10,
+      ),
+    ).animate().fadeIn();
+  }
+
+  Widget _buildDangerZone(LeetBlockProvider provider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Danger Zone'),
+        _buildSettingTile(
+          icon: Icons.delete_forever,
+          title: 'Reset App',
+          subtitle: 'Clear all data and settings',
+          iconColor: const Color(0xFFFF6B6B),
+          onTap: () => _showResetConfirmation(context, provider),
+        ),
+      ],
+    );
+  }
+
+  void _showBlockMessageDialog(BuildContext context, LeetBlockProvider provider) {
+    final controller = TextEditingController(text: provider.blockMessage);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withOpacity(0.05)),
+        ),
+        title: Text(
+          'Block Message',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          style: GoogleFonts.inter(color: Colors.white),
+          maxLength: 30,
+          decoration: InputDecoration(
+            hintText: 'Enter message...',
+            hintStyle: GoogleFonts.inter(color: Colors.white38),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFFFA116)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.setBlockMessage(controller.text.isEmpty ? 'LOCK IN' : controller.text);
+              Navigator.pop(context);
+            },
+            child: Text('Save', style: GoogleFonts.inter(color: const Color(0xFFFFA116))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showStrictModeWarning(BuildContext context, LeetBlockProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -683,6 +846,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: GoogleFonts.inter(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
+                fontSize: 18,
               ),
             ),
           ],
@@ -691,6 +855,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'This will block access to this app until you complete your daily LeetCode quota.\n\nYou won\'t be able to:\n• Change your quota\n• Disable blocked apps\n• Turn off strict mode\n\nAre you sure?',
           style: GoogleFonts.inter(
             color: Colors.white70,
+            fontSize: 14,
+            height: 1.5,
           ),
         ),
         actions: [
@@ -710,7 +876,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: const Color(0xFFFFA116),
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
             child: Text(
@@ -723,279 +889,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildPenaltySection() {
-    return Consumer<LeetBlockProvider>(
-      builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: provider.penaltyEnabled 
-                  ? const Color(0xFFFF6B6B).withOpacity(0.3)
-                  : Colors.white.withOpacity(0.05),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.timer_outlined,
-                    color: Color(0xFFFF6B6B),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Usage Penalty',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: const Color(0xFFFF6B6B),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Increase daily quota if you spend too much time on blocked apps.',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: Colors.white54,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    provider.penaltyEnabled ? 'Enabled' : 'Disabled',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: provider.penaltyEnabled 
-                          ? const Color(0xFFFF6B6B)
-                          : Colors.white38,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Switch(
-                    value: provider.penaltyEnabled,
-                    onChanged: (value) => provider.setPenaltyEnabled(value),
-                    activeColor: const Color(0xFFFF6B6B),
-                    activeTrackColor: const Color(0xFFFF6B6B).withOpacity(0.3),
-                    inactiveThumbColor: Colors.white38,
-                    inactiveTrackColor: Colors.white12,
-                  ),
-                ],
-              ),
-              if (provider.penaltyEnabled) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'Time Threshold',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.white54,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '${provider.penaltyThreshold}m',
-                      style: GoogleFonts.inter(
-                        fontSize: 20,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Expanded(
-                      child: SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: const Color(0xFFFF6B6B),
-                          inactiveTrackColor: const Color(0xFF252525),
-                          thumbColor: const Color(0xFFFF6B6B),
-                          overlayColor: const Color(0xFFFF6B6B).withOpacity(0.2),
-                          trackHeight: 4,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                        ),
-                        child: Slider(
-                          value: provider.penaltyThreshold.toDouble(),
-                          min: 1,
-                          max: 120,
-                          divisions: 119,
-                          label: '${provider.penaltyThreshold}m',
-                          onChanged: (value) => provider.setPenaltyThreshold(value.round()),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Penalty Amount',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.white54,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '+${provider.penaltyIncrement} problem${provider.penaltyIncrement > 1 ? "s" : ""}',
-                      style: GoogleFonts.inter(
-                        fontSize: 20,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: provider.penaltyIncrement > 1 
-                              ? () => provider.setPenaltyIncrement(provider.penaltyIncrement - 1)
-                              : null,
-                          icon: const Icon(Icons.remove, size: 20),
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFF252525),
-                            foregroundColor: Colors.white70,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: provider.penaltyIncrement < 5 
-                              ? () => provider.setPenaltyIncrement(provider.penaltyIncrement + 1)
-                              : null,
-                          icon: const Icon(Icons.add, size: 20),
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFF252525),
-                            foregroundColor: Colors.white70,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Warning Notifications',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Get notified before penalty applies',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: Colors.white54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: _isNotificationEnabled,
-                      onChanged: (value) async {
-                        if (value) {
-                          final status = await Permission.notification.request();
-                          if (status.isPermanentlyDenied) {
-                            openAppSettings();
-                          }
-                          setState(() => _isNotificationEnabled = status.isGranted);
-                        } else {
-                          openAppSettings();
-                        }
-                      },
-                      activeColor: const Color(0xFFFF6B6B),
-                      activeTrackColor: const Color(0xFFFF6B6B).withOpacity(0.3),
-                      inactiveThumbColor: Colors.white38,
-                      inactiveTrackColor: Colors.white12,
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ).animate().fadeIn(delay: 285.ms);
-      },
-    );
-  }
-
-  Widget _buildDangerZone() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFFF6B6B).withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.warning_amber_rounded,
-                color: Color(0xFFFF6B6B),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Danger Zone',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: const Color(0xFFFF6B6B),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => _showResetConfirmation(),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF6B6B),
-                side: const BorderSide(color: Color(0xFFFF6B6B)),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Reset All Settings',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(delay: 300.ms);
-  }
-
-  void _showResetConfirmation() {
+  void _showResetConfirmation(BuildContext context, LeetBlockProvider provider) {
+    final confirmationController = TextEditingController();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1004,44 +900,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: Colors.white.withOpacity(0.05)),
         ),
-        title: Text(
-          'Reset All Settings?',
-          style: GoogleFonts.inter(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 12),
+            Text(
+              'Reset App?',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-        content: Text(
-          'This will clear your username, quota, and blocked apps list. You\'ll need to set up the app again.',
-          style: GoogleFonts.inter(
-            color: Colors.white70,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will delete all data including:\n• Blocked apps list\n• Statistics & history\n• Settings\n\nType "confirm" to proceed:',
+              style: GoogleFonts.inter(
+                color: Colors.white70,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: confirmationController,
+              style: GoogleFonts.inter(color: Colors.white),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                hintText: 'confirm',
+                hintStyle: GoogleFonts.inter(color: Colors.white24),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.inter(color: Colors.white54),
-            ),
+            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54)),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () async {
-              await context.read<LeetBlockProvider>().reset();
-              if (mounted) {
-                Navigator.of(context).popUntil((route) => route.isFirst);
+              if (confirmationController.text == 'confirm') {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context); // Close settings
+                await provider.reset();
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B6B),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
             child: Text(
-              'Reset',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              'Reset Everything',
+              style: GoogleFonts.inter(
+                color: const Color(0xFFFF6B6B),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -1049,4 +967,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-

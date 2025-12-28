@@ -270,6 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Consumer<LeetBlockProvider>(
       builder: (context, provider, _) {
         final stats = provider.currentStats;
+        final isLoading = provider.isLoading;
         final totalSolved = stats?.totalSolved ?? 0;
         
         // Use 0 as fallback if data is not available, avoiding hardcoded magic numbers
@@ -278,6 +279,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final totalHard = stats?.totalHard ?? 0;
         
         final totalQuestions = totalEasy + totalMedium + totalHard;
+        
+        // If totals are 0 and loading, show loading state
+        final isDataLoading = totalQuestions == 0 && (isLoading || stats == null);
         
         final easySolved = stats?.easySolved ?? 0;
         final mediumSolved = stats?.mediumSolved ?? 0;
@@ -303,6 +307,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+              if (isDataLoading)
+                const SizedBox(
+                  height: 140,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFB800)),
+                    ),
+                  ),
+                )
+              else
               Row(
                 children: [
                   // Circular Progress Ring
@@ -371,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         _buildDifficultyBox('Easy', easySolved, totalEasy, const Color(0xFF4CAF50)),
                         const SizedBox(height: 8),
-                        _buildDifficultyBox('Med.', mediumSolved, totalMedium, const Color(0xFFFF9800)),
+                        _buildDifficultyBox('Medium', mediumSolved, totalMedium, const Color(0xFFFF9800)),
                         const SizedBox(height: 8),
                         _buildDifficultyBox('Hard', hardSolved, totalHard, const Color(0xFFF44336)),
                       ],

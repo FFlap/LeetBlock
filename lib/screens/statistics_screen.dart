@@ -324,7 +324,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Screen Time Blocked',
+            'Screen Time of Blocked Apps',
             style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -512,7 +512,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                children: [
                   Text(
-                    "Apps Blocked · $_dateKeyDisplay",
+                    "Total Apps Time · $_dateKeyDisplay",
                     style: GoogleFonts.inter(
                       fontSize: 16, 
                       fontWeight: FontWeight.w600, 
@@ -530,10 +530,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                ],
              ),
              const SizedBox(height: 16),
-             ...sortedApps.map((entry) {
+              ...sortedApps.asMap().entries.map((mapEntry) {
+                final index = mapEntry.key;
+                final entry = mapEntry.value;
                 final pkg = entry.key;
                 final durationMs = entry.value;
                 final durationStr = _formatDuration(durationMs);
+                final isLast = index == sortedApps.length - 1;
                 
                 // Find app info if available
                 final appInfo = provider.allApps.firstWhere(
@@ -541,57 +544,67 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                    orElse: () => BlockedAppInfo(packageName: pkg, appName: pkg, isBlocked: true),
                 );
                 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                       Container(
-                         width: 40,
-                         height: 40,
-                         decoration: BoxDecoration(
-                           borderRadius: BorderRadius.circular(10),
-                           image: appInfo.icon != null 
-                              ? DecorationImage(
-                                  image: MemoryImage(appInfo.icon!), 
-                                  fit: BoxFit.cover
-                                ) 
-                              : null,
-                         ),
-                         child: appInfo.icon == null 
-                            ? Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF252525),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.android, size: 20, color: Colors.white38),
-                              )
-                            : null,
-                       ),
-                       const SizedBox(width: 12),
-                       Expanded(
-                         child: Text(
-                           appInfo.appName,
-                           style: GoogleFonts.inter(
-                             color: Colors.white,
-                             fontWeight: FontWeight.w500,
-                             fontSize: 14,
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                           Container(
+                             width: 40,
+                             height: 40,
+                             decoration: BoxDecoration(
+                               borderRadius: BorderRadius.circular(10),
+                               image: appInfo.icon != null 
+                                  ? DecorationImage(
+                                      image: MemoryImage(appInfo.icon!), 
+                                      fit: BoxFit.cover
+                                    ) 
+                                  : null,
+                             ),
+                             child: appInfo.icon == null 
+                                ? Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF252525),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.android, size: 20, color: Colors.white38),
+                                  )
+                                : null,
                            ),
-                           maxLines: 1,
-                           overflow: TextOverflow.ellipsis,
-                         ),
-                       ),
-                       Text(
-                         durationStr,
-                         style: GoogleFonts.inter(
-                           color: const Color(0xFFFFA116),
-                           fontWeight: FontWeight.w600,
-                           fontSize: 14,
-                         ),
-                       ),
-                    ],
-                  ),
+                           const SizedBox(width: 12),
+                           Expanded(
+                             child: Text(
+                               appInfo.appName,
+                               style: GoogleFonts.inter(
+                                 color: Colors.white,
+                                 fontWeight: FontWeight.w500,
+                                 fontSize: 14,
+                               ),
+                               maxLines: 1,
+                               overflow: TextOverflow.ellipsis,
+                             ),
+                           ),
+                           Text(
+                             durationStr,
+                             style: GoogleFonts.inter(
+                               color: const Color(0xFFFFA116),
+                               fontWeight: FontWeight.w600,
+                               fontSize: 14,
+                             ),
+                           ),
+                        ],
+                      ),
+                    ),
+                    if (!isLast)
+                      Divider(
+                        height: 1,
+                        color: Colors.white.withOpacity(0.05),
+                        indent: 52,
+                      ),
+                  ],
                 );
              }),
            ],
