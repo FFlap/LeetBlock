@@ -66,6 +66,15 @@ class AppBlockerService : Service() {
     private var moreTextView: TextView? = null
     private var checkProgressBtn: Button? = null
     private var statusTextView: TextView? = null
+
+    private data class QuotaSnapshot(
+        val completed: Int,
+        val baseQuota: Int,
+        val penalty: Int,
+    ) {
+        val totalQuota: Int
+            get() = baseQuota + penalty
+    }
     
     private val checkRunnable = object : Runnable {
         override fun run() {
@@ -355,28 +364,99 @@ class AppBlockerService : Service() {
         return prefs.getString("flutter.leetcode_username", null)
     }
 
+    private fun getTodayDateKey(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun getNowTimestampIso(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
+    }
+
+    private fun extractDateKey(dateString: String?): String? {
+        if (dateString.isNullOrBlank() || dateString.length < 10) return null
+        return dateString.substring(0, 10)
+    }
+
+    private fun getNormalizedDailyProgress(prefs: android.content.SharedPreferences): JSONObject {
+        val progressJson = prefs.getString("flutter.daily_progress", null)
+        val progress = try {
+            if (progressJson.isNullOrEmpty()) JSONObject() else JSONObject(progressJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing daily progress JSON, resetting", e)
+            JSONObject()
+        }
+
+        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+        val today = getTodayDateKey()
+        val progressDate = extractDateKey(progress.optString("date", ""))
+        var changed = false
+
+        if (progressDate != today) {
+            if (progressDate != null) {
+                Log.d(TAG, "New day detected in service progress: $progressDate -> $today")
+            }
+
+            progress.put("date", getNowTimestampIso())
+            progress.put("questionsCompletedToday", 0)
+            progress.put("manualOffset", 0)
+            progress.put("quotaPenalty", 0)
+            changed = true
+        } else {
+            val existingCompleted = progress.optInt("questionsCompletedToday", 0)
+            val normalizedCompleted = existingCompleted.coerceAtLeast(0)
+            if (normalizedCompleted != existingCompleted || !progress.has("questionsCompletedToday")) {
+                progress.put("questionsCompletedToday", normalizedCompleted)
+                changed = true
+            }
+
+            val existingPenalty = progress.optInt("quotaPenalty", 0)
+            val normalizedPenalty = existingPenalty.coerceAtLeast(0)
+            if (normalizedPenalty != existingPenalty || !progress.has("quotaPenalty")) {
+                progress.put("quotaPenalty", normalizedPenalty)
+                changed = true
+            }
+
+            if (!progress.has("manualOffset")) {
+                progress.put("manualOffset", 0)
+                changed = true
+            }
+        }
+
+        if (!progress.has("startOfDayTotal")) {
+            progress.put("startOfDayTotal", 0)
+            changed = true
+        }
+
+        if (progress.optInt("dailyQuota", baseQuota) != baseQuota || !progress.has("dailyQuota")) {
+            progress.put("dailyQuota", baseQuota)
+            changed = true
+        }
+
+        if (changed) {
+            prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
+        }
+
+        return progress
+    }
+
+    private fun getQuotaSnapshot(prefs: android.content.SharedPreferences): QuotaSnapshot {
+        val progress = getNormalizedDailyProgress(prefs)
+        val completed = progress.optInt("questionsCompletedToday", 0).coerceAtLeast(0)
+        val penalty = progress.optInt("quotaPenalty", 0).coerceAtLeast(0)
+        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+        return QuotaSnapshot(
+            completed = completed,
+            baseQuota = baseQuota,
+            penalty = penalty,
+        )
+    }
+
     private fun isQuotaMet(): Boolean {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val progressJson = prefs.getString("flutter.daily_progress", null) ?: return false
-        
+
         try {
-            val progress = JSONObject(progressJson)
-            val completed = progress.optInt("questionsCompletedToday", 0)
-            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1)
-            val penalty = progress.optInt("quotaPenalty", 0)
-            val totalQuota = baseQuota + penalty
-            
-            val dateStr = progress.optString("date", "")
-            if (dateStr.isNotEmpty() && dateStr.length >= 10) {
-                val progressDate = dateStr.substring(0, 10)
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                
-                if (progressDate != today) {
-                    return false
-                }
-            }
-            
-            return completed >= totalQuota
+            val snapshot = getQuotaSnapshot(prefs)
+            return snapshot.completed >= snapshot.totalQuota
         } catch (e: Exception) {
             Log.e(TAG, "Error checking quota", e)
             return false
@@ -386,24 +466,10 @@ class AppBlockerService : Service() {
     // Check if BASE quota is met (ignoring penalty) - used for weekly goal tracking
     private fun isBaseQuotaMet(): Boolean {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val progressJson = prefs.getString("flutter.daily_progress", null) ?: return false
-        
+
         try {
-            val progress = JSONObject(progressJson)
-            val completed = progress.optInt("questionsCompletedToday", 0)
-            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1)
-            
-            val dateStr = progress.optString("date", "")
-            if (dateStr.isNotEmpty() && dateStr.length >= 10) {
-                val progressDate = dateStr.substring(0, 10)
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                
-                if (progressDate != today) {
-                    return false
-                }
-            }
-            
-            return completed >= baseQuota
+            val snapshot = getQuotaSnapshot(prefs)
+            return snapshot.completed >= snapshot.baseQuota
         } catch (e: Exception) {
             Log.e(TAG, "Error checking base quota", e)
             return false
@@ -793,26 +859,22 @@ class AppBlockerService : Service() {
     
     private fun updateDailyProgress(todaySubmissions: Int, penalty: Int) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val progressJson = prefs.getString("flutter.daily_progress", null)
-        
+
         try {
-            val progress = if (progressJson != null) {
-                JSONObject(progressJson)
-            } else {
-                JSONObject()
-            }
-            
+            val progress = getNormalizedDailyProgress(prefs)
             val manualOffset = progress.optInt("manualOffset", 0)
-            val totalCompleted = todaySubmissions + manualOffset
+            val totalCompleted = (todaySubmissions + manualOffset).coerceAtLeast(0)
+            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+
             progress.put("questionsCompletedToday", totalCompleted)
-            progress.put("quotaPenalty", penalty)
-            progress.put("date", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date()))
-            
-            // Keep existing quota if present
-            if (progress.has("dailyQuota")) {
-                progress.put("dailyQuota", progress.getInt("dailyQuota"))
+            progress.put("quotaPenalty", penalty.coerceAtLeast(0))
+            progress.put("dailyQuota", baseQuota)
+            progress.put("date", getNowTimestampIso())
+
+            if (!progress.has("startOfDayTotal")) {
+                progress.put("startOfDayTotal", 0)
             }
-            
+
             prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
             Log.d(TAG, "Updated daily progress: $todaySubmissions submissions")
         } catch (e: Exception) {
@@ -822,17 +884,17 @@ class AppBlockerService : Service() {
 
     private fun updatePenaltyOnly(penalty: Int): Boolean {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val progressJson = prefs.getString("flutter.daily_progress", null)
-        
+
         try {
-            val progress = if (progressJson != null) JSONObject(progressJson) else JSONObject()
-            
+            val progress = getNormalizedDailyProgress(prefs)
+            val normalizedPenalty = penalty.coerceAtLeast(0)
+
             // Only update if penalty changed
             val currentPenalty = progress.optInt("quotaPenalty", 0)
-            if (currentPenalty != penalty) {
-                progress.put("quotaPenalty", penalty)
+            if (currentPenalty != normalizedPenalty) {
+                progress.put("quotaPenalty", normalizedPenalty)
                 prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
-                Log.d(TAG, "Updated penalty in background: $penalty")
+                Log.d(TAG, "Updated penalty in background: $normalizedPenalty")
                 return true
             }
         } catch (e: Exception) {
@@ -845,10 +907,6 @@ class AppBlockerService : Service() {
         executor.execute {
             try {
                 val penalty = calculatePenalty()
-                val (_, quota) = getQuotaInfo() // This reads the *saved* penalty
-                
-                // We need to compare with the *base* quota to see if the penalty actually increased
-                // But simpler: just update the penalty. updatePenaltyOnly checks if it changed.
                 val changed = updatePenaltyOnly(penalty)
                 
                 if (changed) {
@@ -863,20 +921,10 @@ class AppBlockerService : Service() {
 
     private fun getQuotaInfo(): Pair<Int, Int> {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val progressJson = prefs.getString("flutter.daily_progress", null)
-        
+
         try {
-            val progress = if (progressJson != null) {
-                JSONObject(progressJson)
-            } else {
-                JSONObject()
-            }
-            
-            val completed = progress.optInt("questionsCompletedToday", 0)
-            val quota = progress.optInt("dailyQuota", 1)
-            val penalty = progress.optInt("quotaPenalty", 0)
-            
-            return Pair(completed, quota + penalty)
+            val snapshot = getQuotaSnapshot(prefs)
+            return Pair(snapshot.completed, snapshot.totalQuota)
         } catch (e: Exception) {
             Log.e(TAG, "Error getting quota info", e)
             return Pair(0, 1) // Default to 0 completed, 1 quota on error
