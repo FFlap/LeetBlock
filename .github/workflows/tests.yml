@@ -17,7 +17,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Set up Gradle
@@ -54,7 +54,7 @@ jobs:
 
   integration-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -64,7 +64,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Set up Gradle
@@ -105,4 +105,15 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          script: flutter test integration_test --dart-define=RUN_LIVE_LEETCODE_TESTS=false
+          script: |
+            flutter test integration_test --dart-define=RUN_LIVE_LEETCODE_TESTS=false
+            for attempt in 1 2; do
+              if flutter test integration_test/live_leetcode_fetch_test.dart --dart-define=RUN_LIVE_LEETCODE_TESTS=true; then
+                break
+              fi
+              if [ "$attempt" -eq 2 ]; then
+                exit 1
+              fi
+              echo "Live LeetCode tests failed on attempt $attempt. Retrying..."
+              sleep 10
+            done
