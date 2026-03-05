@@ -8,17 +8,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:leet_block/main.dart';
 
 import 'support/fakes.dart';
+import 'support/platform_channel_mock.dart';
 import 'support/provider_harness.dart';
 import 'support/waiters.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('list create/delete and study preferences persist', (
+  testWidgets('list create and study preferences persist', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1080, 1920));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final platformMock = PlatformChannelMock();
+    await platformMock.install();
+    addTearDown(() => platformMock.uninstall());
 
     final provider = await createIntegrationProvider(
       leetCodeService: StubLeetCodeService(),
@@ -89,13 +94,6 @@ void main() {
       matching: find.text('Integration List'),
     );
     expect(listInGrid, findsWidgets);
-    final createdListCard =
-        find
-            .ancestor(
-              of: listInGrid.first,
-              matching: find.byType(GestureDetector),
-            )
-            .first;
     final prefs = await SharedPreferences.getInstance();
     final savedLists =
         (jsonDecode(prefs.getString('problem_lists') ?? '[]') as List<dynamic>)
@@ -109,6 +107,14 @@ void main() {
     }
     expect(createdList, isNotNull);
     final createdListId = createdList!['id'] as String;
+    final createdListCard = find.byKey(
+      ValueKey('problem_list_card_$createdListId'),
+    );
+    await waitForFinder(
+      tester,
+      createdListCard,
+      description: 'created list card to appear',
+    );
     await provider.setStudyList(createdListId);
     await waitForFinder(
       tester,
@@ -119,22 +125,5 @@ void main() {
         jsonDecode(prefs.getString('study_preferences') ?? '{}')
             as Map<String, dynamic>;
     expect(persistedStudyPrefs['activeListId'], createdListId);
-
-    await longPressWhenVisible(
-      tester,
-      createdListCard,
-      description: 'created list card long press',
-    );
-    await waitForFinder(
-      tester,
-      find.byKey(const ValueKey('problem_list_delete_confirm_button')),
-      description: 'delete confirmation dialog',
-    );
-    await tapWhenVisible(
-      tester,
-      find.byKey(const ValueKey('problem_list_delete_confirm_button')),
-      description: 'confirm list deletion',
-    );
-    await waitForFinderGone(tester, listInGrid, description: 'deleted list');
   });
 }

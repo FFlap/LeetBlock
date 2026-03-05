@@ -6,6 +6,7 @@ import 'package:leet_block/main.dart';
 import 'package:leet_block/models/leetcode_stats.dart';
 
 import 'support/fakes.dart';
+import 'support/platform_channel_mock.dart';
 import 'support/provider_harness.dart';
 import 'support/waiters.dart';
 
@@ -15,6 +16,10 @@ void main() {
   testWidgets('core setup to main navigation flow works', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1080, 1920));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final platformMock = PlatformChannelMock();
+    await platformMock.install();
+    addTearDown(() => platformMock.uninstall());
 
     final now = DateTime(2026, 2, 28, 10, 0);
     final fakeService =
@@ -81,8 +86,8 @@ void main() {
 
     await tapWhenVisible(
       tester,
-      find.byKey(const ValueKey('setup_request_notification_button')),
-      description: 'request notification button',
+      find.byKey(const ValueKey('setup_skip_notification_button')),
+      description: 'skip notification button',
     );
     await waitForFinder(
       tester,

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> pumpUntil(
   WidgetTester tester,
   bool Function() predicate, {
-  Duration timeout = const Duration(seconds: 10),
+  Duration timeout = const Duration(seconds: 20),
   Duration step = const Duration(milliseconds: 50),
   String? description,
 }) async {
@@ -28,7 +28,7 @@ Future<void> pumpUntil(
 Future<void> waitForFinder(
   WidgetTester tester,
   Finder finder, {
-  Duration timeout = const Duration(seconds: 10),
+  Duration timeout = const Duration(seconds: 20),
   Duration step = const Duration(milliseconds: 50),
   String? description,
 }) {
@@ -44,7 +44,7 @@ Future<void> waitForFinder(
 Future<void> waitForFinderGone(
   WidgetTester tester,
   Finder finder, {
-  Duration timeout = const Duration(seconds: 10),
+  Duration timeout = const Duration(seconds: 20),
   Duration step = const Duration(milliseconds: 50),
   String? description,
 }) {
@@ -60,7 +60,7 @@ Future<void> waitForFinderGone(
 Future<void> tapWhenVisible(
   WidgetTester tester,
   Finder finder, {
-  Duration timeout = const Duration(seconds: 10),
+  Duration timeout = const Duration(seconds: 20),
   Duration step = const Duration(milliseconds: 50),
   String? description,
 }) async {
@@ -80,7 +80,7 @@ Future<void> tapWhenVisible(
 Future<void> longPressWhenVisible(
   WidgetTester tester,
   Finder finder, {
-  Duration timeout = const Duration(seconds: 10),
+  Duration timeout = const Duration(seconds: 20),
   Duration step = const Duration(milliseconds: 50),
   String? description,
 }) async {

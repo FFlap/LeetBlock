@@ -507,6 +507,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 12),
         Center(
           child: TextButton(
+            key: const ValueKey('setup_skip_notification_button'),
             onPressed: () {
               if (mounted) {
                 setState(() => _currentStep = 3);

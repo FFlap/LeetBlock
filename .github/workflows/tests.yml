@@ -1,0 +1,101 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit-and-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Create Android local.properties
+        run: |
+          ANDROID_SDK_PATH="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$ANDROID_SDK_PATH" ]; then
+            echo "Android SDK path is not available in ANDROID_SDK_ROOT or ANDROID_HOME."
+            exit 1
+          fi
+          {
+            echo "flutter.sdk=$FLUTTER_ROOT"
+            echo "sdk.dir=$ANDROID_SDK_PATH"
+          } > android/local.properties
+
+      - name: Run Flutter tests
+        run: flutter test
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest
+
+  integration-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Create Android local.properties
+        run: |
+          ANDROID_SDK_PATH="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$ANDROID_SDK_PATH" ]; then
+            echo "Android SDK path is not available in ANDROID_SDK_ROOT or ANDROID_HOME."
+            exit 1
+          fi
+          {
+            echo "flutter.sdk=$FLUTTER_ROOT"
+            echo "sdk.dir=$ANDROID_SDK_PATH"
+          } > android/local.properties
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run integration tests (Android emulator)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: flutter test integration_test --dart-define=RUN_LIVE_LEETCODE_TESTS=false
