@@ -6,10 +6,7 @@ import '../services/platform_service.dart';
 class PermissionScreen extends StatefulWidget {
   final VoidCallback onAllPermissionsGranted;
 
-  const PermissionScreen({
-    super.key,
-    required this.onAllPermissionsGranted,
-  });
+  const PermissionScreen({super.key, required this.onAllPermissionsGranted});
 
   @override
   State<PermissionScreen> createState() => _PermissionScreenState();
@@ -20,6 +17,9 @@ class _PermissionScreenState extends State<PermissionScreen>
   bool _hasUsageStatsPermission = false;
   bool _hasOverlayPermission = false;
   bool _isChecking = false;
+  bool _isCheckingInFlight = false;
+  bool _isCompletionInFlight = false;
+  bool _didNotifyCompletion = false;
 
   @override
   void initState() {
@@ -42,16 +42,77 @@ class _PermissionScreenState extends State<PermissionScreen>
   }
 
   Future<void> _checkPermissions() async {
-    setState(() => _isChecking = true);
+    if (_isCheckingInFlight || _isCompletionInFlight || _didNotifyCompletion) {
+      return;
+    }
 
-    _hasUsageStatsPermission = await PlatformService.hasUsageStatsPermission();
-    _hasOverlayPermission = await PlatformService.hasOverlayPermission();
+    _isCheckingInFlight = true;
+    if (mounted) {
+      setState(() => _isChecking = true);
+    }
 
-    setState(() => _isChecking = false);
+    bool hasUsageStatsPermission = false;
+    bool hasOverlayPermission = false;
+    try {
+      hasUsageStatsPermission = await PlatformService.hasUsageStatsPermission();
+      hasOverlayPermission = await PlatformService.hasOverlayPermission();
+    } catch (error, stackTrace) {
+      debugPrint('Failed to check permissions: $error');
+      debugPrint('$stackTrace');
+      if (!mounted) {
+        _isCheckingInFlight = false;
+        return;
+      }
+      setState(() {
+        _isChecking = false;
+        _isCheckingInFlight = false;
+      });
+      return;
+    }
 
-    if (_hasUsageStatsPermission && _hasOverlayPermission) {
-      // Start the blocker service
-      await PlatformService.startBlockerService();
+    if (!mounted) {
+      _isCheckingInFlight = false;
+      return;
+    }
+
+    setState(() {
+      _isChecking = false;
+      _hasUsageStatsPermission = hasUsageStatsPermission;
+      _hasOverlayPermission = hasOverlayPermission;
+      _isCheckingInFlight = false;
+    });
+
+    if (_hasUsageStatsPermission &&
+        _hasOverlayPermission &&
+        !_didNotifyCompletion) {
+      _isCompletionInFlight = true;
+      bool started = false;
+      try {
+        started = await PlatformService.startBlockerService();
+      } catch (error, stackTrace) {
+        debugPrint('Failed to start blocker service: $error');
+        debugPrint('$stackTrace');
+        started = false;
+      }
+      if (!started) {
+        _isCompletionInFlight = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Failed to start blocker service. Please try again.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (!mounted) {
+        _isCompletionInFlight = false;
+        return;
+      }
+      _didNotifyCompletion = true;
+      _isCompletionInFlight = false;
       widget.onAllPermissionsGranted();
     }
   }
@@ -64,11 +125,7 @@ class _PermissionScreenState extends State<PermissionScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0D1117),
-              Color(0xFF161B22),
-              Color(0xFF0D1117),
-            ],
+            colors: [Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0D1117)],
           ),
         ),
         child: SafeArea(
@@ -80,9 +137,9 @@ class _PermissionScreenState extends State<PermissionScreen>
                 _buildHeader(),
                 const SizedBox(height: 40),
                 _buildPermissionCard(
+                  key: const ValueKey('permission_usage_card'),
                   title: 'Usage Access',
-                  description:
-                      'Required to detect when you open blocked apps',
+                  description: 'Required to detect when you open blocked apps',
                   icon: Icons.analytics_outlined,
                   isGranted: _hasUsageStatsPermission,
                   onRequest: () async {
@@ -91,6 +148,7 @@ class _PermissionScreenState extends State<PermissionScreen>
                 ),
                 const SizedBox(height: 16),
                 _buildPermissionCard(
+                  key: const ValueKey('permission_overlay_card'),
                   title: 'Display Over Apps',
                   description:
                       'Required to show the blocking screen when you open a blocked app',
@@ -156,6 +214,7 @@ class _PermissionScreenState extends State<PermissionScreen>
   }
 
   Widget _buildPermissionCard({
+    Key? key,
     required String title,
     required String description,
     required IconData icon,
@@ -163,14 +222,16 @@ class _PermissionScreenState extends State<PermissionScreen>
     required VoidCallback onRequest,
   }) {
     return Container(
+      key: key,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF21262D),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isGranted
-              ? const Color(0xFF238636).withOpacity(0.5)
-              : Colors.white10,
+          color:
+              isGranted
+                  ? const Color(0xFF238636).withOpacity(0.5)
+                  : Colors.white10,
         ),
       ),
       child: Row(
@@ -178,16 +239,16 @@ class _PermissionScreenState extends State<PermissionScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isGranted
-                  ? const Color(0xFF238636).withOpacity(0.15)
-                  : const Color(0xFFFFA116).withOpacity(0.15),
+              color:
+                  isGranted
+                      ? const Color(0xFF238636).withOpacity(0.15)
+                      : const Color(0xFFFFA116).withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isGranted ? Icons.check : icon,
-              color: isGranted
-                  ? const Color(0xFF238636)
-                  : const Color(0xFFFFA116),
+              color:
+                  isGranted ? const Color(0xFF238636) : const Color(0xFFFFA116),
               size: 24,
             ),
           ),
@@ -207,10 +268,7 @@ class _PermissionScreenState extends State<PermissionScreen>
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: Colors.white54,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 13, color: Colors.white54),
                 ),
               ],
             ),
@@ -232,17 +290,12 @@ class _PermissionScreenState extends State<PermissionScreen>
               ),
               child: Text(
                 'Grant',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
             )
           else
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: const Color(0xFF238636).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -266,6 +319,7 @@ class _PermissionScreenState extends State<PermissionScreen>
       width: double.infinity,
       height: 56,
       child: OutlinedButton.icon(
+        key: const ValueKey('permission_refresh_button'),
         onPressed: _isChecking ? null : _checkPermissions,
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFFFFA116),
@@ -274,25 +328,22 @@ class _PermissionScreenState extends State<PermissionScreen>
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        icon: _isChecking
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFFFFA116),
-                ),
-              )
-            : const Icon(Icons.refresh),
+        icon:
+            _isChecking
+                ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFFFA116),
+                  ),
+                )
+                : const Icon(Icons.refresh),
         label: Text(
           _isChecking ? 'Checking...' : 'Check Permissions',
-          style: GoogleFonts.inter(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     ).animate().fadeIn(delay: 400.ms);
   }
 }
-

@@ -1,12 +1,16 @@
 import 'package:flutter/services.dart';
 
 class PlatformService {
-  static const MethodChannel _channel = MethodChannel('com.leetblock/app_blocker');
+  static const MethodChannel _channel = MethodChannel(
+    'com.leetblock/app_blocker',
+  );
 
   /// Check if app has usage stats permission
   static Future<bool> hasUsageStatsPermission() async {
     try {
-      final result = await _channel.invokeMethod<bool>('hasUsageStatsPermission');
+      final result = await _channel.invokeMethod<bool>(
+        'hasUsageStatsPermission',
+      );
       return result ?? false;
     } catch (e) {
       print('Error checking usage stats permission: $e');
@@ -44,11 +48,13 @@ class PlatformService {
   }
 
   /// Start the app blocker background service
-  static Future<void> startBlockerService() async {
+  static Future<bool> startBlockerService() async {
     try {
-      await _channel.invokeMethod('startBlockerService');
+      final result = await _channel.invokeMethod<bool>('startBlockerService');
+      return result ?? false;
     } catch (e) {
       print('Error starting blocker service: $e');
+      return false;
     }
   }
 
@@ -77,4 +83,3 @@ class PlatformService {
     return hasUsageStats && hasOverlay;
   }
 }
-

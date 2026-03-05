@@ -22,6 +22,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
   late bool _unsolvedOnly;
   late bool _easiestFirst;
   late bool _skipPremium;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -38,27 +39,30 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
   String _getBehaviorText() {
     String baseText;
     if (_random && _unsolvedOnly && _easiestFirst) {
-      baseText = 'Picks a random unsolved problem from the easiest difficulty tier (Easy → Medium → Hard)';
+      baseText =
+          'Picks a random unsolved problem from the easiest difficulty tier (Easy → Medium → Hard)';
     } else if (_random && _unsolvedOnly) {
       baseText = 'Picks any random unsolved problem';
     } else if (_random && _easiestFirst) {
       baseText = 'Picks a random problem from the easiest difficulty tier';
     } else if (_unsolvedOnly && _easiestFirst) {
-      baseText = 'Picks the first unsolved problem, sorted by difficulty (Easy → Medium → Hard)';
+      baseText =
+          'Picks the first unsolved problem, sorted by difficulty (Easy → Medium → Hard)';
     } else if (_random) {
       baseText = 'Picks any random problem (solved or unsolved)';
     } else if (_unsolvedOnly) {
       baseText = 'Picks the first unsolved problem in list order';
     } else if (_easiestFirst) {
-      baseText = 'Picks the first problem sorted by difficulty (Easy → Medium → Hard)';
+      baseText =
+          'Picks the first problem sorted by difficulty (Easy → Medium → Hard)';
     } else {
       baseText = 'Picks the first problem in list order';
     }
-    
+
     if (_skipPremium) {
       baseText += ', excluding Premium problems';
     }
-    
+
     return baseText;
   }
 
@@ -108,7 +112,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
                   style: TextStyle(color: Colors.white),
                 ),
                 subtitle: Text(
-                  _isStudyList 
+                  _isStudyList
                       ? 'Problems from this list will open on block screen'
                       : 'Enable to practice problems from this list',
                   style: TextStyle(
@@ -127,7 +131,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
                 },
               ),
             ),
-            
+
             if (_isStudyList) ...[
               const SizedBox(height: 16),
               const Align(
@@ -142,7 +146,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              
+
               // Multi-select options
               _buildCheckboxOption(
                 'Random',
@@ -172,7 +176,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
                 _skipPremium,
                 (value) => setState(() => _skipPremium = value ?? true),
               ),
-              
+
               // Behavior description
               const SizedBox(height: 16),
               Container(
@@ -223,13 +227,11 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(color: Colors.white54),
-          ),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
         ),
         ElevatedButton(
+          key: const ValueKey('study_preferences_save_button'),
           onPressed: _savePreferences,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFFFA116),
@@ -238,7 +240,17 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          child: const Text('Save'),
+          child:
+              _isSaving
+                  ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.black,
+                    ),
+                  )
+                  : const Text('Save'),
         ),
       ],
     );
@@ -254,14 +266,13 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: value 
-            ? const Color(0xFFFFA116).withOpacity(0.15)
-            : const Color(0xFF252525),
+        color:
+            value
+                ? const Color(0xFFFFA116).withOpacity(0.15)
+                : const Color(0xFF252525),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: value 
-              ? const Color(0xFFFFA116)
-              : Colors.transparent,
+          color: value ? const Color(0xFFFFA116) : Colors.transparent,
           width: 1.5,
         ),
       ),
@@ -275,10 +286,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
         ),
         subtitle: Text(
           subtitle,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
-            fontSize: 12,
-          ),
+          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
         ),
         value: value,
         onChanged: onChanged,
@@ -294,8 +302,13 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
   }
 
   Future<void> _savePreferences() async {
+    if (_isSaving) {
+      return;
+    }
+
+    setState(() => _isSaving = true);
     final provider = context.read<LeetBlockProvider>();
-    
+
     if (_isStudyList) {
       await provider.setStudyList(widget.listId);
       await provider.setStudyOptions(
@@ -311,7 +324,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
         await provider.setStudyList(null);
       }
     }
-    
+
     if (mounted) {
       Navigator.pop(context);
     }

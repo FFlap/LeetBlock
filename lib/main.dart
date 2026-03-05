@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +14,7 @@ import 'services/platform_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -28,48 +29,92 @@ void main() async {
 }
 
 class LeetBlockApp extends StatelessWidget {
-  const LeetBlockApp({super.key});
+  final LeetBlockProvider? provider;
+  final bool autoStartBlockerService;
+  final bool Function()? isAndroid;
+  final Future<bool> Function()? hasAllPermissions;
+  final Future<bool> Function()? startBlockerService;
+
+  const LeetBlockApp({
+    super.key,
+    this.provider,
+    this.autoStartBlockerService = true,
+    this.isAndroid,
+    this.hasAllPermissions,
+    this.startBlockerService,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final app = MaterialApp(
+      title: 'LeetBlock',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFFFA116),
+          secondary: Color(0xFFFFA116),
+          surface: Color(0xFF1E1E1E),
+        ),
+        textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF121212),
+          elevation: 0,
+        ),
+      ),
+      home: AppRouter(
+        autoStartBlockerService: autoStartBlockerService,
+        isAndroid: isAndroid,
+        hasAllPermissions: hasAllPermissions,
+        startBlockerService: startBlockerService,
+      ),
+    );
+
+    if (provider != null) {
+      return ChangeNotifierProvider<LeetBlockProvider>.value(
+        value: provider!,
+        child: app,
+      );
+    }
+
     return ChangeNotifierProvider(
       create: (_) => LeetBlockProvider()..init(),
-      child: MaterialApp(
-        title: 'LeetBlock',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF121212),
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFFFA116),
-            secondary: Color(0xFFFFA116),
-            surface: Color(0xFF1E1E1E),
-          ),
-          textTheme: GoogleFonts.interTextTheme(
-            ThemeData.dark().textTheme,
-          ),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFF121212),
-            elevation: 0,
-          ),
-        ),
-        home: const AppRouter(),
-      ),
+      child: app,
     );
   }
 }
 
 class AppRouter extends StatefulWidget {
-  const AppRouter({super.key});
+  final bool autoStartBlockerService;
+  final bool Function() isAndroid;
+  final Future<bool> Function() hasAllPermissions;
+  final Future<bool> Function() startBlockerService;
+
+  AppRouter({
+    super.key,
+    this.autoStartBlockerService = true,
+    bool Function()? isAndroid,
+    Future<bool> Function()? hasAllPermissions,
+    Future<bool> Function()? startBlockerService,
+  }) : isAndroid = isAndroid ?? (() => Platform.isAndroid),
+       hasAllPermissions =
+           hasAllPermissions ?? PlatformService.hasAllPermissions,
+       startBlockerService =
+           startBlockerService ?? PlatformService.startBlockerService;
 
   @override
   State<AppRouter> createState() => _AppRouterState();
 }
 
 class _AppRouterState extends State<AppRouter> {
+  static const Duration _autoStartRetryCooldown = Duration(seconds: 30);
   bool _hasPermissions = true; // Default to true for non-Android platforms
   bool _permissionsChecked = false;
+  bool _blockerServiceStartQueued = false;
+  DateTime? _lastAutoStartFailureAt;
+  LeetBlockProvider? _observedProvider;
 
   @override
   void initState() {
@@ -77,14 +122,109 @@ class _AppRouterState extends State<AppRouter> {
     _checkPermissions();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<LeetBlockProvider>();
+    if (_observedProvider == provider) {
+      return;
+    }
+
+    _observedProvider?.removeListener(_handleProviderChanged);
+    _observedProvider = provider;
+    _observedProvider?.addListener(_handleProviderChanged);
+  }
+
+  @override
+  void dispose() {
+    _observedProvider?.removeListener(_handleProviderChanged);
+    super.dispose();
+  }
+
+  void _handleProviderChanged() {
+    final provider = _observedProvider;
+    if (provider == null || !mounted) {
+      return;
+    }
+
+    final shouldResetQueue =
+        !provider.isSetupComplete || (widget.isAndroid() && !_hasPermissions);
+    if (shouldResetQueue && _blockerServiceStartQueued) {
+      setState(() {
+        _blockerServiceStartQueued = false;
+      });
+    }
+    if (shouldResetQueue) {
+      _lastAutoStartFailureAt = null;
+    }
+  }
+
+  Future<void> _startBlockerServiceSafely() async {
+    try {
+      final started = await widget.startBlockerService();
+      if (started) {
+        _lastAutoStartFailureAt = null;
+      } else {
+        _lastAutoStartFailureAt = DateTime.now();
+        if (mounted) {
+          setState(() {
+            _blockerServiceStartQueued = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to auto-start blocker service: $e');
+      _lastAutoStartFailureAt = DateTime.now();
+      if (mounted) {
+        setState(() {
+          _blockerServiceStartQueued = false;
+        });
+      }
+    }
+  }
+
+  bool _isInAutoStartCooldown() {
+    final lastFailureAt = _lastAutoStartFailureAt;
+    if (lastFailureAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(lastFailureAt) < _autoStartRetryCooldown;
+  }
+
+  void _ensureBlockerServiceStartQueued() {
+    if (_blockerServiceStartQueued || _isInAutoStartCooldown()) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _blockerServiceStartQueued) {
+        return;
+      }
+
+      setState(() {
+        _blockerServiceStartQueued = true;
+      });
+      unawaited(_startBlockerServiceSafely());
+    });
+  }
+
   Future<void> _checkPermissions() async {
-    if (Platform.isAndroid) {
-      final hasPermissions = await PlatformService.hasAllPermissions();
+    if (widget.isAndroid()) {
+      final hasPermissions = await widget.hasAllPermissions();
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _hasPermissions = hasPermissions;
         _permissionsChecked = true;
+        if (!hasPermissions) {
+          _blockerServiceStartQueued = false;
+        }
       });
     } else {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _permissionsChecked = true;
       });
@@ -101,10 +241,14 @@ class _AppRouterState extends State<AppRouter> {
         }
 
         // Show permission screen if permissions not granted (Android only)
-        if (Platform.isAndroid && provider.isSetupComplete && !_hasPermissions) {
+        if (widget.isAndroid() &&
+            provider.isSetupComplete &&
+            !_hasPermissions) {
           return PermissionScreen(
             onAllPermissionsGranted: () {
-              setState(() => _hasPermissions = true);
+              setState(() {
+                _hasPermissions = true;
+              });
             },
           );
         }
@@ -115,17 +259,22 @@ class _AppRouterState extends State<AppRouter> {
         }
 
         // Check permissions after setup
-        if (Platform.isAndroid && !_hasPermissions) {
+        if (widget.isAndroid() && !_hasPermissions) {
           return PermissionScreen(
             onAllPermissionsGranted: () {
-              setState(() => _hasPermissions = true);
+              setState(() {
+                _hasPermissions = true;
+              });
             },
           );
         }
 
-        // Start blocker service if on Android with permissions
-        if (Platform.isAndroid && _hasPermissions) {
-          PlatformService.startBlockerService();
+        // Start blocker service once when conditions are met.
+        if (widget.isAndroid() &&
+            _hasPermissions &&
+            widget.autoStartBlockerService &&
+            !_blockerServiceStartQueued) {
+          _ensureBlockerServiceStartQueued();
         }
 
         return const MainNavigationShell();
@@ -186,11 +335,7 @@ class _SplashScreenState extends State<SplashScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0D1117),
-              Color(0xFF161B22),
-              Color(0xFF0D1117),
-            ],
+            colors: [Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0D1117)],
           ),
         ),
         child: Center(
@@ -283,18 +428,12 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1E1E1E),
           border: Border(
-            top: BorderSide(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
+            top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
           ),
         ),
         child: SafeArea(
@@ -345,9 +484,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? const Color(0xFFFFA116).withOpacity(0.15)
-              : Colors.transparent,
+          color:
+              isSelected
+                  ? const Color(0xFFFFA116).withOpacity(0.15)
+                  : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -355,9 +495,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           children: [
             Icon(
               icon,
-              color: isSelected 
-                  ? const Color(0xFFFFA116)
-                  : Colors.white54,
+              color: isSelected ? const Color(0xFFFFA116) : Colors.white54,
               size: 24,
             ),
             if (isSelected) ...[

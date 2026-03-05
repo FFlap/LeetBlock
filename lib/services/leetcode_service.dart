@@ -5,7 +5,15 @@ import '../models/leetcode_stats.dart';
 
 class LeetCodeService {
   static const String _baseUrl = 'https://leetcode.com/graphql';
-  
+  final http.Client _client;
+  final bool _ownsClient;
+  final DateTime Function() _now;
+
+  LeetCodeService({http.Client? client, DateTime Function()? now})
+    : _client = client ?? http.Client(),
+      _ownsClient = client == null,
+      _now = now ?? (() => DateTime.now());
+
   /// Fetches user profile and submission stats from LeetCode
   Future<LeetCodeStats?> fetchUserStats(String username) async {
     try {
@@ -33,43 +41,59 @@ class LeetCodeService {
         }
       ''';
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://leetcode.com',
-        },
-        body: jsonEncode({
-          'query': query,
-          'variables': {'username': username},
-        }),
-      );
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Referer': 'https://leetcode.com',
+            },
+            body: jsonEncode({
+              'query': query,
+              'variables': {'username': username},
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
-        if (data['data']['matchedUser'] == null) {
+
+        final matchedUser = data['data']?['matchedUser'];
+        if (matchedUser == null) {
           return null; // User not found
         }
 
-        final submitStats = data['data']['matchedUser']['submitStats']['acSubmissionNum'] as List;
-        final recentSubmissions = data['data']['recentAcSubmissionList'] as List?;
-        final allQuestionsCount = data['data']['allQuestionsCount'] as List?;
-        
+        final submitStats = matchedUser['submitStats']?['acSubmissionNum'];
+        if (submitStats is! List) {
+          return null;
+        }
+        final recentSubmissionsData = data['data']?['recentAcSubmissionList'];
+        final recentSubmissions =
+            recentSubmissionsData is List ? recentSubmissionsData : null;
+        final allQuestionsCountData = data['data']?['allQuestionsCount'];
+        final allQuestionsCount =
+            allQuestionsCountData is List ? allQuestionsCountData : null;
+
         int totalSolved = 0;
         int easySolved = 0;
         int mediumSolved = 0;
         int hardSolved = 0;
-        
+
         // Default totals (fallback)
         int totalEasy = 0;
         int totalMedium = 0;
         int totalHard = 0;
 
-        for (var stat in submitStats) {
-          final difficulty = stat['difficulty'] as String;
-          final count = stat['count'] as int;
-          
+        for (final stat in submitStats) {
+          if (stat is! Map<String, dynamic>) {
+            continue;
+          }
+          final difficulty = stat['difficulty']?.toString();
+          if (difficulty == null || difficulty.isEmpty) {
+            continue;
+          }
+          final count = _coerceInt(stat['count']);
+
           switch (difficulty) {
             case 'All':
               totalSolved = count;
@@ -85,12 +109,18 @@ class LeetCodeService {
               break;
           }
         }
-        
+
         // Parse total question counts per difficulty
         if (allQuestionsCount != null) {
-          for (var item in allQuestionsCount) {
-            final difficulty = item['difficulty'] as String;
-            final count = item['count'] as int;
+          for (final item in allQuestionsCount) {
+            if (item is! Map<String, dynamic>) {
+              continue;
+            }
+            final difficulty = item['difficulty']?.toString();
+            if (difficulty == null || difficulty.isEmpty) {
+              continue;
+            }
+            final count = _coerceInt(item['count']);
             switch (difficulty) {
               case 'Easy':
                 totalEasy = count;
@@ -106,15 +136,21 @@ class LeetCodeService {
         }
 
         // Count submissions from today
-        final now = DateTime.now();
-        final todayStart = DateTime(now.year, now.month, now.day);
+        final now = _now().toUtc();
+        final todayStart = DateTime.utc(now.year, now.month, now.day);
         int todaySubmissions = 0;
 
         if (recentSubmissions != null) {
           for (var submission in recentSubmissions) {
-            final timestamp = int.parse(submission['timestamp']);
-            final submissionDate = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-            if (submissionDate.isAfter(todayStart)) {
+            final timestamp = int.tryParse('${submission['timestamp']}');
+            if (timestamp == null) {
+              continue;
+            }
+            final submissionDate = DateTime.fromMillisecondsSinceEpoch(
+              timestamp * 1000,
+              isUtc: true,
+            );
+            if (!submissionDate.isBefore(todayStart)) {
               todaySubmissions++;
             }
           }
@@ -127,13 +163,13 @@ class LeetCodeService {
           mediumSolved: mediumSolved,
           hardSolved: hardSolved,
           recentSubmissions: todaySubmissions,
-          lastFetched: DateTime.now(),
+          lastFetched: now,
           totalEasy: totalEasy,
           totalMedium: totalMedium,
           totalHard: totalHard,
         );
       }
-      
+
       return null;
     } catch (e) {
       print('Error fetching LeetCode stats: $e');
@@ -153,28 +189,31 @@ class LeetCodeService {
         }
       ''';
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://leetcode.com',
-          'Origin': 'https://leetcode.com',
-        },
-        body: jsonEncode({
-          'query': query,
-          'variables': {'username': username},
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Referer': 'https://leetcode.com',
+              'Origin': 'https://leetcode.com',
+            },
+            body: jsonEncode({
+              'query': query,
+              'variables': {'username': username},
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['data']['matchedUser'] != null) {
+        final matchedUser = data['data']?['matchedUser'];
+        if (matchedUser != null) {
           return (true, null);
         } else {
           return (false, 'Username "$username" not found on LeetCode');
         }
       }
-      
+
       return (false, 'Server error: ${response.statusCode}');
     } on TimeoutException {
       return (false, 'Connection timeout: Please check your internet');
@@ -239,36 +278,42 @@ class LeetCodeService {
         }
       ''';
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://leetcode.com',
-        },
-        body: jsonEncode({
-          'query': query,
-          'variables': {'username': username},
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Referer': 'https://leetcode.com',
+            },
+            body: jsonEncode({
+              'query': query,
+              'variables': {'username': username},
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
-        if (data['data']['matchedUser'] == null) {
+        final rootData = data['data'] as Map<String, dynamic>?;
+
+        final matchedUser = rootData?['matchedUser'] as Map<String, dynamic>?;
+        if (matchedUser == null) {
           return null;
         }
 
-        final matchedUser = data['data']['matchedUser'];
-        final submitStats = matchedUser['submitStats']['acSubmissionNum'] as List;
+        final submitStats = matchedUser['submitStats']?['acSubmissionNum'];
+        if (submitStats is! List) {
+          return null;
+        }
         final userCalendar = matchedUser['userCalendar'];
-        final recentSubmissions = data['data']['recentAcSubmissionList'] as List?;
-        final allQuestionsCount = data['data']['allQuestionsCount'] as List?;
-        
+        final recentSubmissions = rootData?['recentAcSubmissionList'] as List?;
+        final allQuestionsCount = rootData?['allQuestionsCount'] as List?;
+
         int totalSolved = 0;
         int easySolved = 0;
         int mediumSolved = 0;
         int hardSolved = 0;
-        
+
         // Default totals
         int totalEasy = 0;
         int totalMedium = 0;
@@ -277,7 +322,7 @@ class LeetCodeService {
         for (var stat in submitStats) {
           final difficulty = stat['difficulty'] as String;
           final count = stat['count'] as int;
-          
+
           switch (difficulty) {
             case 'All':
               totalSolved = count;
@@ -293,7 +338,7 @@ class LeetCodeService {
               break;
           }
         }
-        
+
         // Parse total question counts per difficulty
         if (allQuestionsCount != null) {
           for (var item in allQuestionsCount) {
@@ -315,34 +360,47 @@ class LeetCodeService {
 
         // Parse streak data
         final totalActiveDays = userCalendar?['totalActiveDays'] ?? 0;
-        final bestStreak = userCalendar?['streak'] ?? 0; // This is the longest streak
-        
+        final bestStreak =
+            userCalendar?['streak'] ?? 0; // This is the longest streak
+
         // Calculate current streak from submission calendar
         int currentStreak = 0;
-        final submissionCalendarStr = userCalendar?['submissionCalendar'] as String?;
+        final submissionCalendarStr =
+            userCalendar?['submissionCalendar'] as String?;
         if (submissionCalendarStr != null && submissionCalendarStr.isNotEmpty) {
           try {
-            final calendar = jsonDecode(submissionCalendarStr) as Map<String, dynamic>;
-            
+            final calendar =
+                jsonDecode(submissionCalendarStr) as Map<String, dynamic>;
+
             // Convert all keys to integers and sort them descending (most recent first)
-            final timestamps = calendar.keys
-                .map((k) => int.tryParse(k) ?? 0)
-                .where((t) => t > 0 && (calendar[t.toString()] as int) > 0)
-                .toList()
-              ..sort((a, b) => b.compareTo(a));
-            
+            final timestamps =
+                calendar.keys
+                    .map((k) => int.tryParse(k) ?? 0)
+                    .where(
+                      (t) => t > 0 && _coerceInt(calendar[t.toString()]) > 0,
+                    )
+                    .toList()
+                  ..sort((a, b) => b.compareTo(a));
+
             if (timestamps.isNotEmpty) {
               // Get today's date at midnight UTC
-              final now = DateTime.now();
+              final now = _now().toUtc();
               final todayUtc = DateTime.utc(now.year, now.month, now.day);
-              
+
               // Check if most recent submission is from today or yesterday
               final mostRecentTimestamp = timestamps.first;
-              final mostRecentDate = DateTime.fromMillisecondsSinceEpoch(mostRecentTimestamp * 1000, isUtc: true);
-              final mostRecentDay = DateTime.utc(mostRecentDate.year, mostRecentDate.month, mostRecentDate.day);
-              
+              final mostRecentDate = DateTime.fromMillisecondsSinceEpoch(
+                mostRecentTimestamp * 1000,
+                isUtc: true,
+              );
+              final mostRecentDay = DateTime.utc(
+                mostRecentDate.year,
+                mostRecentDate.month,
+                mostRecentDate.day,
+              );
+
               final daysDiff = todayUtc.difference(mostRecentDay).inDays;
-              
+
               // If last submission was more than 1 day ago, streak is broken
               if (daysDiff > 1) {
                 currentStreak = 0;
@@ -350,9 +408,12 @@ class LeetCodeService {
                 // Count consecutive days from the most recent submission
                 DateTime? previousDay;
                 for (final ts in timestamps) {
-                  final date = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true);
+                  final date = DateTime.fromMillisecondsSinceEpoch(
+                    ts * 1000,
+                    isUtc: true,
+                  );
                   final day = DateTime.utc(date.year, date.month, date.day);
-                  
+
                   if (previousDay == null) {
                     currentStreak = 1;
                     previousDay = day;
@@ -380,32 +441,40 @@ class LeetCodeService {
 
         // Parse recent submissions
         final List<Map<String, dynamic>> recentProblems = [];
-        final now = DateTime.now();
-        final todayStart = DateTime(now.year, now.month, now.day);
-        final weekStart = todayStart.subtract(Duration(days: todayStart.weekday - 1));
-        
+        final now = _now().toUtc();
+        final todayStart = DateTime.utc(now.year, now.month, now.day);
+        final weekStart = todayStart.subtract(
+          Duration(days: todayStart.weekday - 1),
+        );
+
         // Weekly activity: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
         final weeklyActivity = List<int>.filled(7, 0);
         int todaySubmissions = 0;
 
         if (recentSubmissions != null) {
           for (var submission in recentSubmissions) {
-            final timestamp = int.parse(submission['timestamp']);
-            final submissionDate = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-            
+            final timestamp = int.tryParse('${submission['timestamp']}');
+            if (timestamp == null) {
+              continue;
+            }
+            final submissionDate = DateTime.fromMillisecondsSinceEpoch(
+              timestamp * 1000,
+              isUtc: true,
+            );
+
             // Count today's submissions
-            if (submissionDate.isAfter(todayStart)) {
+            if (!submissionDate.isBefore(todayStart)) {
               todaySubmissions++;
             }
-            
+
             // Count weekly activity
-            if (submissionDate.isAfter(weekStart)) {
+            if (!submissionDate.isBefore(weekStart)) {
               final dayIndex = submissionDate.weekday - 1; // 0 = Monday
               if (dayIndex >= 0 && dayIndex < 7) {
                 weeklyActivity[dayIndex]++;
               }
             }
-            
+
             // Add to recent problems list
             recentProblems.add({
               'id': submission['id'],
@@ -419,6 +488,7 @@ class LeetCodeService {
           }
         }
 
+        final fetchedAt = _now().toUtc();
         final stats = LeetCodeStats(
           username: username,
           totalSolved: totalSolved,
@@ -426,7 +496,7 @@ class LeetCodeService {
           mediumSolved: mediumSolved,
           hardSolved: hardSolved,
           recentSubmissions: todaySubmissions,
-          lastFetched: DateTime.now(),
+          lastFetched: fetchedAt,
           totalEasy: totalEasy,
           totalMedium: totalMedium,
           totalHard: totalHard,
@@ -463,10 +533,11 @@ class LeetCodeService {
           'weeklyActivity': weeklyActivity,
           'recentProblems': recentProblems,
           'skills': skills,
-          'submissionCalendar': userCalendar?['submissionCalendar'], // Raw JSON string
+          'submissionCalendar':
+              userCalendar?['submissionCalendar'], // Raw JSON string
         };
       }
-      
+
       return null;
     } catch (e) {
       print('Error fetching detailed LeetCode stats: $e');
@@ -477,6 +548,11 @@ class LeetCodeService {
   /// Fetches the code for a specific submission
   Future<String?> fetchSubmissionCode(String submissionId) async {
     try {
+      final parsedSubmissionId = int.tryParse(submissionId);
+      if (parsedSubmissionId == null) {
+        return null;
+      }
+
       final query = '''
         query submissionDetails(\$submissionId: Int!) {
           submissionDetails(submissionId: \$submissionId) {
@@ -485,17 +561,19 @@ class LeetCodeService {
         }
       ''';
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://leetcode.com',
-        },
-        body: jsonEncode({
-          'query': query,
-          'variables': {'submissionId': int.parse(submissionId)},
-        }),
-      );
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Referer': 'https://leetcode.com',
+            },
+            body: jsonEncode({
+              'query': query,
+              'variables': {'submissionId': parsedSubmissionId},
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -512,17 +590,21 @@ class LeetCodeService {
   /// Returns a map with 'title' and 'difficulty' keys, or null if not found
   Future<Map<String, String>?> fetchProblemDetails(String url) async {
     try {
-      // Extract the proble from the URL
-      final regex = RegExp(r'leetcode\.com/problems/([^/]+)');
+      // Extract the problem from the URL
+      final regex = RegExp(r'leetcode\.(?:com|cn)/problems/([^/]+)');
       final match = regex.firstMatch(url);
-      
+
       if (match == null) {
         print('Could not extract problem from URL: $url');
         return null;
       }
-      
+
       final slug = match.group(1);
-      
+      if (slug == null || slug.isEmpty) {
+        print('Could not extract problem slug from URL: $url');
+        return null;
+      }
+
       final query = '''
         query questionData(\$titleSlug: String!) {
           question(titleSlug: \$titleSlug) {
@@ -534,21 +616,23 @@ class LeetCodeService {
         }
       ''';
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://leetcode.com',
-        },
-        body: jsonEncode({
-          'query': query,
-          'variables': {'titleSlug': slug},
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Referer': 'https://leetcode.com',
+            },
+            body: jsonEncode({
+              'query': query,
+              'variables': {'titleSlug': slug},
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         if (data['data'] != null && data['data']['question'] != null) {
           final question = data['data']['question'];
           return {
@@ -559,12 +643,30 @@ class LeetCodeService {
           };
         }
       }
-      
+
       return null;
     } catch (e) {
       print('Error fetching problem details: $e');
       return null;
     }
   }
-}
 
+  void dispose() {
+    if (_ownsClient) {
+      _client.close();
+    }
+  }
+
+  int _coerceInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+}

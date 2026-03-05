@@ -49,10 +49,7 @@ class _QuotaSettingsScreenState extends State<QuotaSettingsScreen> {
               children: [
                 Text(
                   'Set your daily goal',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    color: Colors.white70,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 16, color: Colors.white70),
                 ),
                 const SizedBox(height: 48),
                 Center(
@@ -63,7 +60,10 @@ class _QuotaSettingsScreenState extends State<QuotaSettingsScreen> {
                       fontWeight: FontWeight.bold,
                       color: const Color(0xFFFFA116),
                     ),
-                  ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack),
+                  ).animate().scale(
+                    duration: 300.ms,
+                    curve: Curves.easeOutBack,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Center(
@@ -107,8 +107,20 @@ class _QuotaSettingsScreenState extends State<QuotaSettingsScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('1', style: GoogleFonts.jetBrainsMono(color: Colors.white38, fontSize: 16)),
-                      Text('10', style: GoogleFonts.jetBrainsMono(color: Colors.white38, fontSize: 16)),
+                      Text(
+                        '1',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: Colors.white38,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '10',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: Colors.white38,
+                          fontSize: 16,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -122,7 +134,11 @@ class _QuotaSettingsScreenState extends State<QuotaSettingsScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, color: Colors.white54, size: 20),
+                      const Icon(
+                        Icons.info_outline,
+                        color: Colors.white54,
+                        size: 20,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(

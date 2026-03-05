@@ -72,12 +72,17 @@ class PenaltySettingsScreen extends StatelessWidget {
                         ),
                         Switch(
                           value: provider.penaltyEnabled,
-                          onChanged: (value) => provider.setPenaltyEnabled(value),
+                          onChanged:
+                              (value) => provider.setPenaltyEnabled(value),
                           activeColor: const Color(0xFFFFA116),
-                          activeTrackColor: const Color(0xFFFFA116).withOpacity(0.3),
+                          activeTrackColor: const Color(
+                            0xFFFFA116,
+                          ).withOpacity(0.3),
                           inactiveThumbColor: Colors.white38,
                           inactiveTrackColor: Colors.white12,
-                          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                          trackOutlineColor: WidgetStateProperty.all(
+                            Colors.transparent,
+                          ),
                         ),
                       ],
                     ),
@@ -102,7 +107,9 @@ class PenaltySettingsScreen extends StatelessWidget {
                   icon: Icons.hourglass_empty,
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: const Color(0xFFFFA116), // Changed to orange
+                      activeTrackColor: const Color(
+                        0xFFFFA116,
+                      ), // Changed to orange
                       inactiveTrackColor: const Color(0xFF252525),
                       thumbColor: const Color(0xFFFFA116), // Changed to orange
                       overlayColor: const Color(0xFFFFA116).withOpacity(0.2),
@@ -113,7 +120,9 @@ class PenaltySettingsScreen extends StatelessWidget {
                       max: 60,
                       divisions: 11,
                       label: '${provider.penaltyThreshold} min',
-                      onChanged: (value) => provider.setPenaltyThreshold(value.round()),
+                      onChanged:
+                          (value) =>
+                              provider.setPenaltyThreshold(value.round()),
                     ),
                   ),
                 ).animate().fadeIn(delay: 100.ms),
@@ -124,7 +133,9 @@ class PenaltySettingsScreen extends StatelessWidget {
                   icon: Icons.exposure_plus_1,
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: const Color(0xFFFFA116), // Changed to orange
+                      activeTrackColor: const Color(
+                        0xFFFFA116,
+                      ), // Changed to orange
                       inactiveTrackColor: const Color(0xFF252525),
                       thumbColor: const Color(0xFFFFA116), // Changed to orange
                       overlayColor: const Color(0xFFFFA116).withOpacity(0.2),
@@ -135,7 +146,9 @@ class PenaltySettingsScreen extends StatelessWidget {
                       max: 5,
                       divisions: 4,
                       label: '+${provider.penaltyIncrement}',
-                      onChanged: (value) => provider.setPenaltyIncrement(value.round()),
+                      onChanged:
+                          (value) =>
+                              provider.setPenaltyIncrement(value.round()),
                     ),
                   ),
                 ).animate().fadeIn(delay: 200.ms),
@@ -143,12 +156,18 @@ class PenaltySettingsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFA116).withOpacity(0.1), // Changed to orange
+                    color: const Color(
+                      0xFFFFA116,
+                    ).withOpacity(0.1), // Changed to orange
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, color: Color(0xFFFFA116), size: 20), // Changed to orange
+                      const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFFFFA116),
+                        size: 20,
+                      ), // Changed to orange
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(

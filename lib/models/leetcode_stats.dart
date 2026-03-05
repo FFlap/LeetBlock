@@ -58,9 +58,10 @@ class LeetCodeStats {
       mediumSolved: json['mediumSolved'] ?? 0,
       hardSolved: json['hardSolved'] ?? 0,
       recentSubmissions: json['recentSubmissions'] ?? 0,
-      lastFetched: json['lastFetched'] != null
-          ? DateTime.parse(json['lastFetched'])
-          : DateTime.now(),
+      lastFetched:
+          json['lastFetched'] != null
+              ? DateTime.parse(json['lastFetched'])
+              : DateTime.now(),
       totalEasy: json['totalEasy'] ?? 0,
       totalMedium: json['totalMedium'] ?? 0,
       totalHard: json['totalHard'] ?? 0,
@@ -87,7 +88,7 @@ class DailyProgress {
   });
 
   bool get isQuotaMet => questionsCompletedToday >= (dailyQuota + quotaPenalty);
-  
+
   /// Returns true if base quota is met (ignoring penalty) - used for weekly goal tracking
   bool get isBaseQuotaMet => questionsCompletedToday >= dailyQuota;
 
@@ -113,9 +114,9 @@ class DailyProgress {
     );
   }
 
-  factory DailyProgress.newDay(int quota, int currentTotal) {
+  factory DailyProgress.newDay(int quota, int currentTotal, {DateTime? date}) {
     return DailyProgress(
-      date: DateTime.now(),
+      date: date ?? DateTime.now(),
       questionsCompletedToday: 0,
       dailyQuota: quota,
       startOfDayTotal: currentTotal,
@@ -134,7 +135,8 @@ class DailyProgress {
   }) {
     return DailyProgress(
       date: date ?? this.date,
-      questionsCompletedToday: questionsCompletedToday ?? this.questionsCompletedToday,
+      questionsCompletedToday:
+          questionsCompletedToday ?? this.questionsCompletedToday,
       dailyQuota: dailyQuota ?? this.dailyQuota,
       startOfDayTotal: startOfDayTotal ?? this.startOfDayTotal,
       manualOffset: manualOffset ?? this.manualOffset,
@@ -142,4 +144,3 @@ class DailyProgress {
     );
   }
 }
-

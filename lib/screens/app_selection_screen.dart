@@ -85,6 +85,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TextField(
+        key: const ValueKey('app_selection_search_input'),
         style: GoogleFonts.inter(color: Colors.white),
         decoration: InputDecoration(
           hintText: 'Search apps...',
@@ -113,33 +114,25 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
       builder: (context, provider, _) {
         if (provider.isLoading && provider.allApps.isEmpty) {
           return const Center(
-            child: CircularProgressIndicator(
-              color: Color(0xFFFFA116),
-            ),
+            child: CircularProgressIndicator(color: Color(0xFFFFA116)),
           );
         }
 
-        final filteredApps = provider.allApps.where((app) {
-          return app.appName.toLowerCase().contains(_searchQuery);
-        }).toList();
+        final filteredApps =
+            provider.allApps.where((app) {
+              return app.appName.toLowerCase().contains(_searchQuery);
+            }).toList();
 
         if (filteredApps.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.search_off,
-                  size: 64,
-                  color: Colors.white24,
-                ),
+                const Icon(Icons.search_off, size: 64, color: Colors.white24),
                 const SizedBox(height: 16),
                 Text(
                   'No apps found',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    color: Colors.white54,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 16, color: Colors.white54),
                 ),
               ],
             ),
@@ -162,21 +155,20 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: app.isBlocked
-            ? const Color(0xFFFFA116).withOpacity(0.1)
-            : const Color(0xFF1E1E1E),
+        color:
+            app.isBlocked
+                ? const Color(0xFFFFA116).withOpacity(0.1)
+                : const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: app.isBlocked
-              ? const Color(0xFFFFA116).withOpacity(0.5)
-              : Colors.transparent,
+          color:
+              app.isBlocked
+                  ? const Color(0xFFFFA116).withOpacity(0.5)
+                  : Colors.transparent,
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 48,
           height: 48,
@@ -184,19 +176,13 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
             color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: app.icon != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(
-                    app.icon!,
-                    width: 48,
-                    height: 48,
-                  ),
-                )
-              : const Icon(
-                  Icons.android,
-                  color: Colors.white38,
-                ),
+          child:
+              app.icon != null
+                  ? ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(app.icon!, width: 48, height: 48),
+                  )
+                  : const Icon(Icons.android, color: Colors.white38),
         ),
         title: Text(
           app.appName,
@@ -213,29 +199,25 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: app.isBlocked
-                  ? const Color(0xFFFFA116)
-                  : Colors.transparent,
+              color:
+                  app.isBlocked ? const Color(0xFFFFA116) : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: app.isBlocked
-                    ? const Color(0xFFFFA116)
-                    : Colors.white24,
+                color: app.isBlocked ? const Color(0xFFFFA116) : Colors.white24,
                 width: 2,
               ),
             ),
-            child: app.isBlocked
-                ? const Icon(
-                    Icons.check,
-                    color: Colors.black,
-                    size: 18,
-                  )
-                : null,
+            child:
+                app.isBlocked
+                    ? const Icon(Icons.check, color: Colors.black, size: 18)
+                    : null,
           ),
         ),
         onTap: () => provider.toggleAppBlocking(app.packageName),
       ),
-    ).animate().fadeIn(delay: Duration(milliseconds: 50 * (provider.allApps.indexOf(app) % 10)));
+    ).animate().fadeIn(
+      delay: Duration(milliseconds: 50 * (provider.allApps.indexOf(app) % 10)),
+    );
   }
 
   Widget _buildDoneButton() {
@@ -247,6 +229,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
+              key: const ValueKey('app_selection_done_button'),
               onPressed: () {
                 Navigator.pop(context, true);
               },
@@ -274,4 +257,3 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
     ).animate().fadeIn(delay: 200.ms);
   }
 }
-
