@@ -83,10 +83,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
                         );
                       },
-                      icon: const Icon(Icons.settings_outlined, color: Colors.white54, size: 20),
+                      icon: const Icon(
+                        Icons.settings_outlined,
+                        color: Colors.white54,
+                        size: 20,
+                      ),
                       padding: EdgeInsets.zero,
                     ),
                   ),
@@ -102,10 +108,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProgressCard() {
     return Consumer<LeetBlockProvider>(
       builder: (context, provider, _) {
-        final progress = provider.questionsCompletedToday / provider.effectiveQuota;
+        final progress =
+            provider.effectiveQuota > 0
+                ? provider.questionsCompletedToday / provider.effectiveQuota
+                : 0.0;
         final isComplete = provider.isQuotaMet;
         final penalty = provider.quotaPenalty;
-        
+
         // Calculate split progress
         final baseQuota = provider.dailyQuota;
         final totalCompleted = provider.questionsCompletedToday;
@@ -151,40 +160,48 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E1E1E),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: penalty > 0
-                        ? RichText(
-                            text: TextSpan(
+                    child:
+                        penalty > 0
+                            ? RichText(
+                              text: TextSpan(
+                                style: GoogleFonts.inter(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: '$baseCompleted/$baseQuota + ',
+                                  ),
+                                  TextSpan(
+                                    text: '$penaltyCompleted/$penalty',
+                                    style: const TextStyle(
+                                      color: Color(0xFFFF6B6B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                            : Text(
+                              '$totalCompleted/$baseQuota',
                               style: GoogleFonts.inter(
-                                fontSize: 14,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
                               ),
-                              children: [
-                                TextSpan(text: '$baseCompleted/$baseQuota + '),
-                                TextSpan(
-                                  text: '$penaltyCompleted/$penalty',
-                                  style: const TextStyle(color: Color(0xFFFF6B6B)),
-                                ),
-                              ],
                             ),
-                          )
-                        : Text(
-                            '$totalCompleted/$baseQuota',
-                            style: GoogleFonts.inter(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 20),
 
               // Linear Progress Bar
@@ -198,12 +215,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-
-
               const SizedBox(height: 24),
-              
+
               // Action Buttons
               _buildActionButton(
+                key: const ValueKey('home_go_to_leetcode_button'),
                 icon: Icons.code_rounded,
                 label: 'Go to LeetCode',
                 onTap: () => PlatformService.openLeetCode(),
@@ -211,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               _buildActionButton(
+                key: const ValueKey('home_refresh_progress_button'),
                 icon: Icons.refresh_rounded,
                 label: 'Refresh Progress',
                 onTap: () => provider.fetchStats(),
@@ -224,12 +241,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionButton({
+    Key? key,
     required IconData icon,
     required String label,
     required VoidCallback onTap,
     required bool isPrimary,
   }) {
     return Material(
+      key: key,
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -240,15 +259,19 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: isPrimary ? const Color(0xFFFFA116) : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
-            border: isPrimary ? null : Border.all(color: const Color(0xFFFFA116)),
+            border:
+                isPrimary ? null : Border.all(color: const Color(0xFFFFA116)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                icon, 
+                icon,
                 size: 18,
-                color: isPrimary ? const Color(0xFF121212) : const Color(0xFFFFA116),
+                color:
+                    isPrimary
+                        ? const Color(0xFF121212)
+                        : const Color(0xFFFFA116),
               ),
               const SizedBox(width: 8),
               Text(
@@ -256,7 +279,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: isPrimary ? const Color(0xFF121212) : const Color(0xFFFFA116),
+                  color:
+                      isPrimary
+                          ? const Color(0xFF121212)
+                          : const Color(0xFFFFA116),
                 ),
               ),
             ],
@@ -272,17 +298,17 @@ class _HomeScreenState extends State<HomeScreen> {
         final stats = provider.currentStats;
         final isLoading = provider.isLoading;
         final totalSolved = stats?.totalSolved ?? 0;
-        
+
         // Use 0 as fallback if data is not available, avoiding hardcoded magic numbers
         final totalEasy = stats?.totalEasy ?? 0;
         final totalMedium = stats?.totalMedium ?? 0;
         final totalHard = stats?.totalHard ?? 0;
-        
+
         final totalQuestions = totalEasy + totalMedium + totalHard;
-        
-        // If totals are 0 and loading, show loading state
-        final isDataLoading = totalQuestions == 0 && (isLoading || stats == null);
-        
+
+        // Show loading only while the first stats payload is still pending.
+        final isDataLoading = isLoading && stats == null;
+
         final easySolved = stats?.easySolved ?? 0;
         final mediumSolved = stats?.mediumSolved ?? 0;
         final hardSolved = stats?.hardSolved ?? 0;
@@ -313,87 +339,108 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Center(
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFB800)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFFFFA116),
+                      ),
                     ),
                   ),
                 )
               else
-              Row(
-                children: [
-                  // Circular Progress Ring
-                  SizedBox(
-                    width: 140,
-                    height: 140,
-                    child: CustomPaint(
-                      painter: _StatsRingPainter(
-                        easySolved: easySolved,
-                        mediumSolved: mediumSolved,
-                        hardSolved: hardSolved,
-                        totalEasy: totalEasy,
-                        totalMedium: totalMedium,
-                        totalHard: totalHard,
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            RichText(
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: '$totalSolved',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
+                Row(
+                  children: [
+                    // Circular Progress Ring
+                    SizedBox(
+                      width: 140,
+                      height: 140,
+                      child: CustomPaint(
+                        painter: _StatsRingPainter(
+                          easySolved: easySolved,
+                          mediumSolved: mediumSolved,
+                          hardSolved: hardSolved,
+                          totalEasy: totalEasy,
+                          totalMedium: totalMedium,
+                          totalHard: totalHard,
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              RichText(
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '$totalSolved',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
                                     ),
+                                    TextSpan(
+                                      text: '/$totalQuestions',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.check,
+                                    color: Color(0xFF4CAF50),
+                                    size: 14,
                                   ),
-                                  TextSpan(
-                                    text: '/$totalQuestions',
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Solved',
                                     style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
+                                      fontSize: 12,
                                       color: Colors.white54,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.check, color: Color(0xFF4CAF50), size: 14),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Solved',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: Colors.white54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 20),
-                  // Difficulty Breakdown Boxes
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _buildDifficultyBox('Easy', easySolved, totalEasy, const Color(0xFF4CAF50)),
-                        const SizedBox(height: 8),
-                        _buildDifficultyBox('Medium', mediumSolved, totalMedium, const Color(0xFFFF9800)),
-                        const SizedBox(height: 8),
-                        _buildDifficultyBox('Hard', hardSolved, totalHard, const Color(0xFFF44336)),
-                      ],
+                    const SizedBox(width: 20),
+                    // Difficulty Breakdown Boxes
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildDifficultyBox(
+                            'Easy',
+                            easySolved,
+                            totalEasy,
+                            const Color(0xFF4CAF50),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildDifficultyBox(
+                            'Medium',
+                            mediumSolved,
+                            totalMedium,
+                            const Color(0xFFFF9800),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildDifficultyBox(
+                            'Hard',
+                            hardSolved,
+                            totalHard,
+                            const Color(0xFFF44336),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
         ).animate().fadeIn(delay: 200.ms);
@@ -487,7 +534,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const AppSelectionScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const AppSelectionScreen(),
+                          ),
                         );
                       },
                       style: TextButton.styleFrom(
@@ -558,7 +607,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         children: [
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
                             child: Row(
                               children: [
                                 if (app.icon != null)
@@ -578,7 +630,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: const Color(0xFF252525),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: const Icon(Icons.android, color: Colors.white38),
+                                    child: const Icon(
+                                      Icons.android,
+                                      color: Colors.white38,
+                                    ),
                                   ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -592,32 +647,46 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: provider.isQuotaMet
-                                        ? const Color(0xFF4CAF50).withOpacity(0.15)
-                                        : const Color(0xFFF44336).withOpacity(0.15),
+                                    color:
+                                        provider.isQuotaMet
+                                            ? const Color(
+                                              0xFF4CAF50,
+                                            ).withOpacity(0.15)
+                                            : const Color(
+                                              0xFFF44336,
+                                            ).withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        provider.isQuotaMet ? Icons.lock_open : Icons.lock,
+                                        provider.isQuotaMet
+                                            ? Icons.lock_open
+                                            : Icons.lock,
                                         size: 12,
-                                        color: provider.isQuotaMet
-                                            ? const Color(0xFF4CAF50)
-                                            : const Color(0xFFF44336),
+                                        color:
+                                            provider.isQuotaMet
+                                                ? const Color(0xFF4CAF50)
+                                                : const Color(0xFFF44336),
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        provider.isQuotaMet ? 'Open' : 'Blocked',
+                                        provider.isQuotaMet
+                                            ? 'Open'
+                                            : 'Blocked',
                                         style: GoogleFonts.inter(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w500,
-                                          color: provider.isQuotaMet
-                                              ? const Color(0xFF4CAF50)
-                                              : const Color(0xFFF44336),
+                                          color:
+                                              provider.isQuotaMet
+                                                  ? const Color(0xFF4CAF50)
+                                                  : const Color(0xFFF44336),
                                         ),
                                       ),
                                     ],
@@ -687,20 +756,21 @@ class _StatsRingPainter extends CustomPainter {
     const startAngle = 135 * math.pi / 180;
     // Sweep 270 degrees total
     const fullSweep = 270 * math.pi / 180;
-    
+
     // Calculate gap size in radians
     // Reduce gap significantly
-    final capAngle = strokeWidth / radius; 
+    final capAngle = strokeWidth / radius;
     // Small visual gap (approx 2 degrees)
-    final visualGap = 2 * math.pi / 180; 
-    final gapSize = visualGap + capAngle; 
+    final visualGap = 2 * math.pi / 180;
+    final gapSize = visualGap + capAngle;
 
     final rect = Rect.fromCircle(center: center, radius: radius);
-    
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
 
     // Calculate proportions
     final totalAll = totalEasy + totalMedium + totalHard;
@@ -709,64 +779,82 @@ class _StatsRingPainter extends CustomPainter {
     final easyRatio = totalEasy / totalAll;
     final mediumRatio = totalMedium / totalAll;
     final hardRatio = totalHard / totalAll;
-    
+
     // Total available sweep for the actual arcs (subtracting gaps)
     // 2 gaps total (between 3 segments)
     final availableSweep = fullSweep - (gapSize * 2);
-    
+
     // Sweep angles for segments
     final easySweep = easyRatio * availableSweep;
     final mediumSweep = mediumRatio * availableSweep;
     final hardSweep = hardRatio * availableSweep;
-    
+
     double currentAngle = startAngle;
-    
+
     // --- EASY SEGMENT (Green) ---
     paint.color = const Color(0xFF1B3320);
     canvas.drawArc(rect, currentAngle, easySweep, false, paint);
-    
+
     if (totalEasy > 0) {
       final easyProgressRatio = (easySolved / totalEasy).clamp(0.0, 1.0);
       paint.color = const Color(0xFF4CAF50);
       if (easyProgressRatio > 0.01) {
-         canvas.drawArc(rect, currentAngle, easySweep * easyProgressRatio, false, paint);
+        canvas.drawArc(
+          rect,
+          currentAngle,
+          easySweep * easyProgressRatio,
+          false,
+          paint,
+        );
       }
     }
     currentAngle += easySweep + gapSize;
-    
+
     // --- MEDIUM SEGMENT (Orange) ---
     paint.color = const Color(0xFF332B1B);
     canvas.drawArc(rect, currentAngle, mediumSweep, false, paint);
-    
+
     if (totalMedium > 0) {
       final mediumProgressRatio = (mediumSolved / totalMedium).clamp(0.0, 1.0);
       paint.color = const Color(0xFFFF9800);
       if (mediumProgressRatio > 0.01) {
-        canvas.drawArc(rect, currentAngle, mediumSweep * mediumProgressRatio, false, paint);
+        canvas.drawArc(
+          rect,
+          currentAngle,
+          mediumSweep * mediumProgressRatio,
+          false,
+          paint,
+        );
       }
     }
     currentAngle += mediumSweep + gapSize;
-    
+
     // --- HARD SEGMENT (Red) ---
     paint.color = const Color(0xFF331B1B);
     canvas.drawArc(rect, currentAngle, hardSweep, false, paint);
-    
+
     if (totalHard > 0) {
-       final hardProgressRatio = (hardSolved / totalHard).clamp(0.0, 1.0);
-       paint.color = const Color(0xFFF44336);
-       if (hardProgressRatio > 0.01) {
-         canvas.drawArc(rect, currentAngle, hardSweep * hardProgressRatio, false, paint);
-       }
+      final hardProgressRatio = (hardSolved / totalHard).clamp(0.0, 1.0);
+      paint.color = const Color(0xFFF44336);
+      if (hardProgressRatio > 0.01) {
+        canvas.drawArc(
+          rect,
+          currentAngle,
+          hardSweep * hardProgressRatio,
+          false,
+          paint,
+        );
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant _StatsRingPainter oldDelegate) {
     return easySolved != oldDelegate.easySolved ||
-           mediumSolved != oldDelegate.mediumSolved ||
-           hardSolved != oldDelegate.hardSolved ||
-           totalEasy != oldDelegate.totalEasy ||
-           totalMedium != oldDelegate.totalMedium ||
-           totalHard != oldDelegate.totalHard;
+        mediumSolved != oldDelegate.mediumSolved ||
+        hardSolved != oldDelegate.hardSolved ||
+        totalEasy != oldDelegate.totalEasy ||
+        totalMedium != oldDelegate.totalMedium ||
+        totalHard != oldDelegate.totalHard;
   }
 }

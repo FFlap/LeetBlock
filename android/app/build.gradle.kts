@@ -34,8 +34,26 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // `GeneratedPluginRegistrant` references IntegrationTestPlugin even for release
+    // compilation during `./gradlew test`. Keep it compile-only to avoid packaging it.
+    releaseCompileOnly(project(":integration_test"))
+    profileCompileOnly(project(":integration_test"))
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("org.json:json:20240303")
 }

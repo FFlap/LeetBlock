@@ -2,14 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:leet_block/main.dart';
+import 'support/fakes.dart';
+import 'support/provider_test_harness.dart';
 
 void main() {
-  testWidgets('LeetBlock app smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const LeetBlockApp());
+  testWidgets('LeetBlock app boots to setup flow deterministically', (
+    WidgetTester tester,
+  ) async {
+    final provider = await createInitializedProvider(
+      leetCodeService: StubLeetCodeService(),
+      initialPrefs: const {},
+    );
 
-    // Verify the app loads with the splash screen
-    expect(find.text('LeetBlock'), findsOneWidget);
-    expect(find.text('Discipline through code'), findsOneWidget);
+    await tester.pumpWidget(
+      LeetBlockApp(provider: provider, autoStartBlockerService: false),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('LeetBlock'), findsWidgets);
+    expect(find.byKey(const ValueKey('setup_username_input')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 }

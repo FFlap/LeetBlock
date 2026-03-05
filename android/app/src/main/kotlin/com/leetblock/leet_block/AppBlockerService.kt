@@ -8,10 +8,12 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -22,6 +24,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,6 +37,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
 
+internal data class UsageSnapshot(
+    val totalBlockedTimeMs: Long,
+    val perAppTimeMs: Map<String, Long>,
+)
+
 class AppBlockerService : Service() {
     
     companion object {
@@ -42,6 +50,7 @@ class AppBlockerService : Service() {
         private const val CHANNEL_ID_WARNING = "LeetBlockServiceWarning"
         private const val NOTIFICATION_ID = 1001
         private const val WARNING_NOTIFICATION_ID = 1002
+        private const val PERMISSION_NOTIFICATION_ID = 1003
         private const val CHECK_INTERVAL = 250L
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val LEETCODE_API = "https://leetcode.com/graphql"
@@ -59,7 +68,15 @@ class AppBlockerService : Service() {
     private val PENALTY_CHECK_TICKS = 20 // Check every ~5 seconds (20 * 250ms)
     private var lastWarningMultiplier = -1
     private var lastWarningDay = -1  // Track day of year for resetting warnings
-    
+
+    // Internal test hooks (defaults preserve production behavior)
+    @VisibleForTesting internal var foregroundAppResolver: (() -> String?)? = null
+    @VisibleForTesting internal var overlayPermissionChecker: (() -> Boolean)? = null
+    @VisibleForTesting internal var todaySubmissionsFetcher: ((String) -> Int)? = null
+    @VisibleForTesting internal var usageSnapshotProvider: ((Set<String>) -> UsageSnapshot)? = null
+    @VisibleForTesting internal var backgroundExecutor: ((Runnable) -> Unit)? = null
+    @VisibleForTesting internal var penaltyWarningObserver: ((Int) -> Unit)? = null
+    @VisibleForTesting internal var nowMillisProvider: (() -> Long)? = null
 
     // UI elements we need to update
     private var remainingTextView: TextView? = null
@@ -67,15 +84,6 @@ class AppBlockerService : Service() {
     private var checkProgressBtn: Button? = null
     private var statusTextView: TextView? = null
 
-    private data class QuotaSnapshot(
-        val completed: Int,
-        val baseQuota: Int,
-        val penalty: Int,
-    ) {
-        val totalQuota: Int
-            get() = baseQuota + penalty
-    }
-    
     private val checkRunnable = object : Runnable {
         override fun run() {
             try {
@@ -104,6 +112,18 @@ class AppBlockerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "Service started")
+        if (!hasRequiredPermissions()) {
+            Log.w(TAG, "Missing required permissions; stopping service")
+            sendMissingPermissionsNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         handler.removeCallbacks(checkRunnable)
         handler.post(checkRunnable)
         return START_STICKY
@@ -146,6 +166,29 @@ class AppBlockerService : Service() {
         }
     }
 
+    private fun hasRequiredPermissions(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !canDrawOverlays()) {
+            return false
+        }
+
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
     private fun createNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -178,21 +221,41 @@ class AppBlockerService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
-            
+
+        penaltyWarningObserver?.invoke(minutesRemaining)
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(WARNING_NOTIFICATION_ID, notification)
     }
 
+    private fun sendMissingPermissionsNotification() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID_WARNING)
+            .setContentTitle("LeetBlock Paused")
+            .setContentText("Grant usage and overlay permissions to resume blocking.")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(PERMISSION_NOTIFICATION_ID, notification)
+    }
+
     private fun checkForegroundApp(forceUpdate: Boolean = false) {
-        if (!Settings.canDrawOverlays(this)) {
+        if (!canDrawOverlays()) {
             return
         }
         
         var foregroundApp = getForegroundAppPackage()
-        
-        if (foregroundApp == null && lastForegroundApp != null) {
-            foregroundApp = lastForegroundApp
-        }
         
         if (foregroundApp == null) {
             return
@@ -279,8 +342,10 @@ class AppBlockerService : Service() {
     }
 
     private fun getForegroundAppPackage(): String? {
+        foregroundAppResolver?.let { return it.invoke() }
+
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val endTime = System.currentTimeMillis()
+        val endTime = nowMillis()
         val startTime = endTime - 1000 * 60 * 5
         
         try {
@@ -365,90 +430,54 @@ class AppBlockerService : Service() {
     }
 
     private fun getTodayDateKey(): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis()))
     }
 
     private fun getNowTimestampIso(): String {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date())
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US).format(Date(nowMillis()))
     }
 
-    private fun extractDateKey(dateString: String?): String? {
-        if (dateString.isNullOrBlank() || dateString.length < 10) return null
-        return dateString.substring(0, 10)
+    private fun nowMillis(): Long {
+        return nowMillisProvider?.invoke() ?: System.currentTimeMillis()
+    }
+
+    private fun canDrawOverlays(): Boolean {
+        return overlayPermissionChecker?.invoke() ?: Settings.canDrawOverlays(this)
+    }
+
+    private fun runInBackground(work: () -> Unit) {
+        val runnable = Runnable { work() }
+        backgroundExecutor?.invoke(runnable) ?: executor.execute(runnable)
     }
 
     private fun getNormalizedDailyProgress(prefs: android.content.SharedPreferences): JSONObject {
         val progressJson = prefs.getString("flutter.daily_progress", null)
-        val progress = try {
-            if (progressJson.isNullOrEmpty()) JSONObject() else JSONObject(progressJson)
+        val parsedProgress = try {
+            if (progressJson.isNullOrEmpty()) null else JSONObject(progressJson)
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing daily progress JSON, resetting", e)
-            JSONObject()
+            null
         }
 
         val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
-        val today = getTodayDateKey()
-        val progressDate = extractDateKey(progress.optString("date", ""))
-        var changed = false
+        val normalized = DailyProgressStore.normalize(
+            current = parsedProgress,
+            baseQuota = baseQuota,
+            todayKey = getTodayDateKey(),
+            nowIso = getNowTimestampIso(),
+        )
 
-        if (progressDate != today) {
-            if (progressDate != null) {
-                Log.d(TAG, "New day detected in service progress: $progressDate -> $today")
-            }
-
-            progress.put("date", getNowTimestampIso())
-            progress.put("questionsCompletedToday", 0)
-            progress.put("manualOffset", 0)
-            progress.put("quotaPenalty", 0)
-            changed = true
-        } else {
-            val existingCompleted = progress.optInt("questionsCompletedToday", 0)
-            val normalizedCompleted = existingCompleted.coerceAtLeast(0)
-            if (normalizedCompleted != existingCompleted || !progress.has("questionsCompletedToday")) {
-                progress.put("questionsCompletedToday", normalizedCompleted)
-                changed = true
-            }
-
-            val existingPenalty = progress.optInt("quotaPenalty", 0)
-            val normalizedPenalty = existingPenalty.coerceAtLeast(0)
-            if (normalizedPenalty != existingPenalty || !progress.has("quotaPenalty")) {
-                progress.put("quotaPenalty", normalizedPenalty)
-                changed = true
-            }
-
-            if (!progress.has("manualOffset")) {
-                progress.put("manualOffset", 0)
-                changed = true
-            }
+        if (normalized.changed) {
+            prefs.edit().putString("flutter.daily_progress", normalized.progress.toString()).apply()
         }
 
-        if (!progress.has("startOfDayTotal")) {
-            progress.put("startOfDayTotal", 0)
-            changed = true
-        }
-
-        if (progress.optInt("dailyQuota", baseQuota) != baseQuota || !progress.has("dailyQuota")) {
-            progress.put("dailyQuota", baseQuota)
-            changed = true
-        }
-
-        if (changed) {
-            prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
-        }
-
-        return progress
+        return normalized.progress
     }
 
-    private fun getQuotaSnapshot(prefs: android.content.SharedPreferences): QuotaSnapshot {
+    private fun getQuotaSnapshot(prefs: android.content.SharedPreferences): DailyProgressSnapshot {
         val progress = getNormalizedDailyProgress(prefs)
-        val completed = progress.optInt("questionsCompletedToday", 0).coerceAtLeast(0)
-        val penalty = progress.optInt("quotaPenalty", 0).coerceAtLeast(0)
         val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
-        return QuotaSnapshot(
-            completed = completed,
-            baseQuota = baseQuota,
-            penalty = penalty,
-        )
+        return DailyProgressStore.snapshot(progress, baseQuota)
     }
 
     private fun isQuotaMet(): Boolean {
@@ -722,7 +751,7 @@ class AppBlockerService : Service() {
         }
         
         // Fetch from LeetCode in background
-        executor.execute {
+        runInBackground {
             try {
                 val todaySubmissions = fetchTodaySubmissions(username)
                 
@@ -788,6 +817,8 @@ class AppBlockerService : Service() {
     }
     
     private fun fetchTodaySubmissions(username: String): Int {
+        todaySubmissionsFetcher?.let { return it.invoke(username) }
+
         val query = """
             query getUserProfile(${"$"}username: String!) {
                 recentAcSubmissionList(username: ${"$"}username, limit: 50) {
@@ -862,20 +893,16 @@ class AppBlockerService : Service() {
 
         try {
             val progress = getNormalizedDailyProgress(prefs)
-            val manualOffset = progress.optInt("manualOffset", 0)
-            val totalCompleted = (todaySubmissions + manualOffset).coerceAtLeast(0)
             val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+            val merged = DailyProgressStore.mergeSubmissions(
+                progress = progress,
+                todaySubmissions = todaySubmissions,
+                penalty = penalty,
+                baseQuota = baseQuota,
+                nowIso = getNowTimestampIso(),
+            )
 
-            progress.put("questionsCompletedToday", totalCompleted)
-            progress.put("quotaPenalty", penalty.coerceAtLeast(0))
-            progress.put("dailyQuota", baseQuota)
-            progress.put("date", getNowTimestampIso())
-
-            if (!progress.has("startOfDayTotal")) {
-                progress.put("startOfDayTotal", 0)
-            }
-
-            prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
+            prefs.edit().putString("flutter.daily_progress", merged.toString()).apply()
             Log.d(TAG, "Updated daily progress: $todaySubmissions submissions")
         } catch (e: Exception) {
             Log.e(TAG, "Error updating daily progress", e)
@@ -887,14 +914,10 @@ class AppBlockerService : Service() {
 
         try {
             val progress = getNormalizedDailyProgress(prefs)
-            val normalizedPenalty = penalty.coerceAtLeast(0)
-
-            // Only update if penalty changed
-            val currentPenalty = progress.optInt("quotaPenalty", 0)
-            if (currentPenalty != normalizedPenalty) {
-                progress.put("quotaPenalty", normalizedPenalty)
-                prefs.edit().putString("flutter.daily_progress", progress.toString()).apply()
-                Log.d(TAG, "Updated penalty in background: $normalizedPenalty")
+            val (merged, changed) = DailyProgressStore.mergePenalty(progress, penalty)
+            if (changed) {
+                prefs.edit().putString("flutter.daily_progress", merged.toString()).apply()
+                Log.d(TAG, "Updated penalty in background: ${penalty.coerceAtLeast(0)}")
                 return true
             }
         } catch (e: Exception) {
@@ -904,7 +927,7 @@ class AppBlockerService : Service() {
     }
 
     private fun checkPenaltyInBackground() {
-        executor.execute {
+        runInBackground {
             try {
                 val penalty = calculatePenalty()
                 val changed = updatePenaltyOnly(penalty)
@@ -956,53 +979,14 @@ class AppBlockerService : Service() {
         
         if (blockedPackages.isEmpty()) return 0
         
-        // Get usage events for precise calculation
-        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        val startTime = calendar.timeInMillis
-        val endTime = System.currentTimeMillis()
-        
-        val events = usageStatsManager.queryEvents(startTime, endTime)
-        val event = android.app.usage.UsageEvents.Event()
-        
-        val lastForegroundTime = mutableMapOf<String, Long>()
-        val totalTimeMap = mutableMapOf<String, Long>()
-        
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            val packageName = event.packageName
-            
-            if (blockedPackages.contains(packageName)) {
-                if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                    lastForegroundTime[packageName] = event.timeStamp
-                } else if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND) {
-                    if (lastForegroundTime.containsKey(packageName)) {
-                        val start = lastForegroundTime[packageName]!!
-                        val duration = event.timeStamp - start
-                        totalTimeMap[packageName] = (totalTimeMap[packageName] ?: 0L) + duration
-                        lastForegroundTime.remove(packageName)
-                    } else {
-                        // Ignore background events without a start time to avoid over-counting
-                    }
-                }
-            }
-        }
-        
-        // Handle apps currently in foreground
-        for ((pkg, start) in lastForegroundTime) {
-            val duration = endTime - start
-            totalTimeMap[pkg] = (totalTimeMap[pkg] ?: 0L) + duration
-        }
-        
-        var totalBlockedTime = 0L
+        val usageSnapshot = usageSnapshotProvider?.invoke(blockedPackages.toSet())
+            ?: collectUsageSnapshot(blockedPackages.toSet())
+        val totalTimeMap = usageSnapshot.perAppTimeMs.toMutableMap()
+        val totalBlockedTime = usageSnapshot.totalBlockedTimeMs.coerceAtLeast(0L)
         val contributingApps = StringBuilder()
-        
+
         for ((pkg, timeMs) in totalTimeMap) {
             if (timeMs > 0) {
-                totalBlockedTime += timeMs
                 contributingApps.append("$pkg: ${timeMs / 1000 / 60}m, ")
             }
         }
@@ -1014,7 +998,7 @@ class AppBlockerService : Service() {
         try {
             val historyJson = prefs.getString("flutter.daily_screen_time_history", "{}")
             val history = JSONObject(historyJson ?: "{}")
-            val todayDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            val todayDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(nowMillis()))
             history.put(todayDate, totalBlockedTime)
             prefs.edit().putString("flutter.daily_screen_time_history", history.toString()).apply()
             
@@ -1055,7 +1039,8 @@ class AppBlockerService : Service() {
         val penaltyMultipliers = totalMinutes / thresholdMins
 
         // Reset warning tracker on new day
-        val currentDay = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        val currentDay =
+            Calendar.getInstance().apply { timeInMillis = nowMillis() }.get(Calendar.DAY_OF_YEAR)
         if (currentDay != lastWarningDay) {
             lastWarningMultiplier = -1
             lastWarningDay = currentDay
@@ -1091,6 +1076,56 @@ class AppBlockerService : Service() {
         Log.d(TAG, "Penalty Calc: $totalMinutes mins used / $thresholdMins threshold = $penaltyMultipliers multipliers. Increment: $increment")
         
         return (penaltyMultipliers * increment).toInt()
+    }
+
+    private fun collectUsageSnapshot(blockedPackages: Set<String>): UsageSnapshot {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = nowMillis()
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startTime = calendar.timeInMillis
+        val endTime = nowMillis()
+
+        val events = usageStatsManager.queryEvents(startTime, endTime)
+        val event = android.app.usage.UsageEvents.Event()
+
+        val lastForegroundTime = mutableMapOf<String, Long>()
+        val totalTimeMap = mutableMapOf<String, Long>()
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val packageName = event.packageName
+
+            if (blockedPackages.contains(packageName)) {
+                if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                    lastForegroundTime[packageName] = event.timeStamp
+                } else if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND) {
+                    if (lastForegroundTime.containsKey(packageName)) {
+                        val start = lastForegroundTime[packageName]!!
+                        val duration = event.timeStamp - start
+                        totalTimeMap[packageName] = (totalTimeMap[packageName] ?: 0L) + duration
+                        lastForegroundTime.remove(packageName)
+                    }
+                }
+            }
+        }
+
+        for ((pkg, start) in lastForegroundTime) {
+            val duration = endTime - start
+            totalTimeMap[pkg] = (totalTimeMap[pkg] ?: 0L) + duration
+        }
+
+        val normalizedMap =
+            totalTimeMap
+                .filterValues { it > 0 }
+                .mapValues { (_, value) -> value.coerceAtLeast(0L) }
+        val totalBlockedTime = normalizedMap.values.fold(0L) { acc, value -> acc + value }
+
+        return UsageSnapshot(totalBlockedTimeMs = totalBlockedTime, perAppTimeMs = normalizedMap)
     }
 
     private fun hideOverlay() {
@@ -1205,6 +1240,79 @@ class AppBlockerService : Service() {
     }
     
     private data class ProblemInfo(val id: String, val title: String, val url: String, val difficulty: String, val isPremium: Boolean = false)
+
+    private fun requireMainThreadForTestApi() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Test accessor must be called on the main thread"
+        }
+    }
+
+    // Test-only accessors/triggers
+    @VisibleForTesting
+    internal fun runForegroundCheckForTest(forceUpdate: Boolean = false) {
+        requireMainThreadForTestApi()
+        checkForegroundApp(forceUpdate)
+    }
+
+    @VisibleForTesting
+    internal fun runPenaltyCheckForTest() {
+        requireMainThreadForTestApi()
+        checkPenaltyInBackground()
+    }
+
+    @VisibleForTesting
+    internal fun runProgressCheckForTest() {
+        requireMainThreadForTestApi()
+        checkLeetCodeProgress()
+    }
+
+    @VisibleForTesting
+    internal fun isOverlayShowingForTest(): Boolean {
+        requireMainThreadForTestApi()
+        return isOverlayShowing
+    }
+
+    @VisibleForTesting
+    internal fun overlayRemainingTextForTest(): String? {
+        requireMainThreadForTestApi()
+        return remainingTextView?.text?.toString()
+    }
+
+    @VisibleForTesting
+    internal fun overlayMoreTextForTest(): String? {
+        requireMainThreadForTestApi()
+        return moreTextView?.text?.toString()
+    }
+
+    @VisibleForTesting
+    internal fun overlayStatusTextForTest(): String? {
+        requireMainThreadForTestApi()
+        return statusTextView?.text?.toString()
+    }
+
+    @VisibleForTesting
+    internal fun overlayCheckButtonTextForTest(): String? {
+        requireMainThreadForTestApi()
+        return checkProgressBtn?.text?.toString()
+    }
+
+    @VisibleForTesting
+    internal fun overlayCheckButtonEnabledForTest(): Boolean? {
+        requireMainThreadForTestApi()
+        return checkProgressBtn?.isEnabled
+    }
+
+    @VisibleForTesting
+    internal fun currentlyBlockingAppForTest(): String? {
+        requireMainThreadForTestApi()
+        return currentlyBlockingApp
+    }
+
+    @VisibleForTesting
+    internal fun getNextProblemUrlForTest(): String? {
+        requireMainThreadForTestApi()
+        return getNextProblemUrl()
+    }
     
     private fun getProblemsFromList(listId: String): List<ProblemInfo> {
         val problems = mutableListOf<ProblemInfo>()

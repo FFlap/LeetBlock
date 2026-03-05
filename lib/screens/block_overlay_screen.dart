@@ -26,11 +26,7 @@ class BlockOverlayScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1A0A0A),
-              Color(0xFF0D1117),
-              Color(0xFF1A0A0A),
-            ],
+            colors: [Color(0xFF1A0A0A), Color(0xFF0D1117), Color(0xFF1A0A0A)],
           ),
         ),
         child: SafeArea(
@@ -59,29 +55,25 @@ class BlockOverlayScreen extends StatelessWidget {
 
   Widget _buildBlockIcon() {
     return Container(
-      width: 120,
-      height: 120,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFFF6B6B).withOpacity(0.2),
-            const Color(0xFFFF6B6B).withOpacity(0.05),
-          ],
-        ),
-        border: Border.all(
-          color: const Color(0xFFFF6B6B).withOpacity(0.5),
-          width: 2,
-        ),
-      ),
-      child: const Icon(
-        Icons.block,
-        size: 56,
-        color: Color(0xFFFF6B6B),
-      ),
-    )
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFFFF6B6B).withOpacity(0.2),
+                const Color(0xFFFF6B6B).withOpacity(0.05),
+              ],
+            ),
+            border: Border.all(
+              color: const Color(0xFFFF6B6B).withOpacity(0.5),
+              width: 2,
+            ),
+          ),
+          child: const Icon(Icons.block, size: 56, color: Color(0xFFFF6B6B)),
+        )
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(
           duration: 2000.ms,
@@ -124,18 +116,12 @@ class BlockOverlayScreen extends StatelessWidget {
       children: [
         Text(
           'You haven\'t completed your',
-          style: GoogleFonts.inter(
-            fontSize: 16,
-            color: Colors.white60,
-          ),
+          style: GoogleFonts.inter(fontSize: 16, color: Colors.white60),
           textAlign: TextAlign.center,
         ),
         Text(
           'LeetCode quota for today',
-          style: GoogleFonts.inter(
-            fontSize: 16,
-            color: Colors.white60,
-          ),
+          style: GoogleFonts.inter(fontSize: 16, color: Colors.white60),
           textAlign: TextAlign.center,
         ),
       ],
@@ -151,9 +137,7 @@ class BlockOverlayScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF21262D),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFFF6B6B).withOpacity(0.2),
-        ),
+        border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.2)),
       ),
       child: Column(
         children: [
@@ -205,10 +189,7 @@ class BlockOverlayScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             '$completed / $dailyQuota completed today',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: Colors.white38,
-            ),
+            style: GoogleFonts.inter(fontSize: 13, color: Colors.white38),
           ),
         ],
       ),
@@ -246,14 +227,10 @@ class BlockOverlayScreen extends StatelessWidget {
           onPressed: onDismiss,
           child: Text(
             'Go Back',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: Colors.white54,
-            ),
+            style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
           ),
         ).animate().fadeIn(delay: 500.ms),
       ],
     );
   }
 }
-

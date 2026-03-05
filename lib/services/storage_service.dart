@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_info.dart';
 import '../models/leetcode_stats.dart';
@@ -18,47 +19,98 @@ class StorageService {
   static const String _penaltyIncrementKey = 'penalty_increment';
   static const String _totalBlockedTimeKey = 'total_blocked_time';
 
+  final SharedPreferences? _providedPrefs;
   late SharedPreferences _prefs;
+  bool _isInitialized = false;
+  Future<void>? _initFuture;
+
+  StorageService({SharedPreferences? prefs}) : _providedPrefs = prefs {
+    if (prefs != null) {
+      _prefs = prefs;
+      _isInitialized = true;
+    }
+  }
 
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    if (_isInitialized) {
+      return;
+    }
+    if (_initFuture != null) {
+      await _initFuture;
+      return;
+    }
+
+    _initFuture = () async {
+      _prefs = _providedPrefs ?? await SharedPreferences.getInstance();
+      _isInitialized = true;
+    }();
+
+    try {
+      await _initFuture;
+    } finally {
+      _initFuture = null;
+    }
+  }
+
+  SharedPreferences get _prefsSafe {
+    if (!_isInitialized) {
+      throw StateError(
+        'StorageService is not initialized. Call init() before use, or '
+        'provide SharedPreferences via the constructor.',
+      );
+    }
+    return _prefs;
   }
 
   Future<void> reload() async {
-    await _prefs.reload();
+    await _prefsSafe.reload();
   }
 
   // Username
   Future<void> saveUsername(String username) async {
-    await _prefs.setString(_usernameKey, username);
+    await _prefsSafe.setString(_usernameKey, username);
   }
 
   String? getUsername() {
-    return _prefs.getString(_usernameKey);
+    return _prefsSafe.getString(_usernameKey);
   }
 
   // Daily Quota
   Future<void> saveDailyQuota(int quota) async {
-    await _prefs.setInt(_dailyQuotaKey, quota);
+    await _prefsSafe.setInt(_dailyQuotaKey, quota);
   }
 
   int getDailyQuota() {
-    return _prefs.getInt(_dailyQuotaKey) ?? 1;
+    return _prefsSafe.getInt(_dailyQuotaKey) ?? 1;
   }
 
   // Blocked Apps
   Future<void> saveBlockedApps(List<BlockedAppInfo> apps) async {
     final blockedOnly = apps.where((app) => app.isBlocked).toList();
     final jsonList = blockedOnly.map((app) => app.toJson()).toList();
-    await _prefs.setString(_blockedAppsKey, jsonEncode(jsonList));
+    await _prefsSafe.setString(_blockedAppsKey, jsonEncode(jsonList));
   }
 
   List<BlockedAppInfo> getBlockedApps() {
-    final jsonString = _prefs.getString(_blockedAppsKey);
+    final jsonString = _prefsSafe.getString(_blockedAppsKey);
     if (jsonString == null) return [];
-    
-    final jsonList = jsonDecode(jsonString) as List;
-    return jsonList.map((json) => BlockedAppInfo.fromJson(json)).toList();
+
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! List) {
+      return [];
+    }
+
+    final blockedApps = <BlockedAppInfo>[];
+    for (final json in decoded.whereType<Map>()) {
+      try {
+        blockedApps.add(
+          BlockedAppInfo.fromJson(Map<String, dynamic>.from(json)),
+        );
+      } catch (_) {
+        // Ignore malformed entries and keep valid apps.
+      }
+    }
+    return blockedApps;
   }
 
   Set<String> getBlockedPackageNames() {
@@ -67,128 +119,179 @@ class StorageService {
 
   // Daily Progress
   Future<void> saveDailyProgress(DailyProgress progress) async {
-    await _prefs.setString(_dailyProgressKey, jsonEncode(progress.toJson()));
+    await _prefsSafe.setString(
+      _dailyProgressKey,
+      jsonEncode(progress.toJson()),
+    );
   }
 
   DailyProgress? getDailyProgress() {
-    final jsonString = _prefs.getString(_dailyProgressKey);
+    final jsonString = _prefsSafe.getString(_dailyProgressKey);
     if (jsonString == null) return null;
-    
-    return DailyProgress.fromJson(jsonDecode(jsonString));
+
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return null;
+    }
+
+    try {
+      return DailyProgress.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
   }
 
   // Daily Completion History
   static const String _dailyCompletionHistoryKey = 'daily_completion_history';
 
   Future<void> saveDailyCompletionHistory(Map<String, bool> history) async {
-    await _prefs.setString(_dailyCompletionHistoryKey, jsonEncode(history));
+    await _prefsSafe.setString(_dailyCompletionHistoryKey, jsonEncode(history));
   }
 
   Map<String, bool> getDailyCompletionHistory() {
-    final jsonString = _prefs.getString(_dailyCompletionHistoryKey);
+    final jsonString = _prefsSafe.getString(_dailyCompletionHistoryKey);
     if (jsonString == null) return {};
-    return Map<String, bool>.from(jsonDecode(jsonString));
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return {};
+    }
+
+    final result = <String, bool>{};
+    for (final entry in decoded.entries) {
+      result[entry.key.toString()] = _asBool(entry.value);
+    }
+    return result;
   }
 
   // Daily Screen Time History
   static const String _dailyScreenTimeHistoryKey = 'daily_screen_time_history';
 
   Future<void> saveDailyScreenTimeHistory(Map<String, int> history) async {
-    await _prefs.setString(_dailyScreenTimeHistoryKey, jsonEncode(history));
+    await _prefsSafe.setString(_dailyScreenTimeHistoryKey, jsonEncode(history));
   }
 
   Map<String, int> getDailyScreenTimeHistory() {
-    final jsonString = _prefs.getString(_dailyScreenTimeHistoryKey);
+    final jsonString = _prefsSafe.getString(_dailyScreenTimeHistoryKey);
     if (jsonString == null) return {};
-    return Map<String, int>.from(jsonDecode(jsonString));
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return {};
+    }
+
+    final result = <String, int>{};
+    for (final entry in decoded.entries) {
+      result[entry.key.toString()] = _asInt(entry.value);
+    }
+    return result;
   }
-  
+
   // Daily App Usage History Data
   static const String _dailyAppUsageHistoryKey = 'daily_app_usage_history';
 
   Map<String, Map<String, int>> getDailyAppUsageHistory() {
-    final jsonString = _prefs.getString(_dailyAppUsageHistoryKey);
+    final jsonString = _prefsSafe.getString(_dailyAppUsageHistoryKey);
     if (jsonString == null) return {};
-    
-    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return {};
+    }
+
     final result = <String, Map<String, int>>{};
-    
-    decoded.forEach((date, appMap) {
-      if (appMap is Map<String, dynamic>) {
-        result[date] = Map<String, int>.from(appMap);
+
+    for (final entry in decoded.entries) {
+      final date = entry.key.toString();
+      final appMap = entry.value;
+      if (appMap is! Map) {
+        continue;
       }
-    });
+
+      final usage = <String, int>{};
+      for (final appEntry in appMap.entries) {
+        usage[appEntry.key.toString()] = _asInt(appEntry.value);
+      }
+      result[date] = usage;
+    }
 
     return result;
   }
 
   // Last Stats (cached)
   Future<void> saveLastStats(LeetCodeStats stats) async {
-    await _prefs.setString(_lastStatsKey, jsonEncode(stats.toJson()));
+    await _prefsSafe.setString(_lastStatsKey, jsonEncode(stats.toJson()));
   }
 
   LeetCodeStats? getLastStats() {
-    final jsonString = _prefs.getString(_lastStatsKey);
+    final jsonString = _prefsSafe.getString(_lastStatsKey);
     if (jsonString == null) return null;
-    
-    return LeetCodeStats.fromJson(jsonDecode(jsonString));
+
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return null;
+    }
+
+    try {
+      return LeetCodeStats.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
   }
 
   // Setup Complete Flag
   Future<void> setSetupComplete(bool complete) async {
-    await _prefs.setBool(_isSetupCompleteKey, complete);
+    await _prefsSafe.setBool(_isSetupCompleteKey, complete);
   }
 
   bool isSetupComplete() {
-    return _prefs.getBool(_isSetupCompleteKey) ?? false;
+    return _prefsSafe.getBool(_isSetupCompleteKey) ?? false;
   }
 
   // Block Message
   Future<void> saveBlockMessage(String message) async {
-    await _prefs.setString(_blockMessageKey, message);
+    await _prefsSafe.setString(_blockMessageKey, message);
   }
 
   String getBlockMessage() {
-    return _prefs.getString(_blockMessageKey) ?? 'LOCK IN';
+    return _prefsSafe.getString(_blockMessageKey) ?? 'LOCK IN';
   }
 
   // Strict Mode
   Future<void> saveStrictMode(bool enabled) async {
-    await _prefs.setBool(_strictModeKey, enabled);
+    await _prefsSafe.setBool(_strictModeKey, enabled);
   }
 
   bool getStrictMode() {
-    return _prefs.getBool(_strictModeKey) ?? false;
+    return _prefsSafe.getBool(_strictModeKey) ?? false;
   }
 
   // Penalty Settings
   Future<void> savePenaltyEnabled(bool enabled) async {
-    await _prefs.setBool(_penaltyEnabledKey, enabled);
+    await _prefsSafe.setBool(_penaltyEnabledKey, enabled);
   }
 
   bool getPenaltyEnabled() {
-    return _prefs.getBool(_penaltyEnabledKey) ?? false;
+    return _prefsSafe.getBool(_penaltyEnabledKey) ?? false;
   }
 
   Future<void> savePenaltyThreshold(int minutes) async {
-    await _prefs.setInt(_penaltyThresholdKey, minutes);
+    await _prefsSafe.setInt(_penaltyThresholdKey, minutes);
   }
 
   int getPenaltyThreshold() {
-    return _prefs.getInt(_penaltyThresholdKey) ?? 30; // Default 30 mins
+    return _prefsSafe.getInt(_penaltyThresholdKey) ?? 30; // Default 30 mins
   }
 
   Future<void> savePenaltyIncrement(int amount) async {
-    await _prefs.setInt(_penaltyIncrementKey, amount);
+    await _prefsSafe.setInt(_penaltyIncrementKey, amount);
   }
 
   int getPenaltyIncrement() {
-    return _prefs.getInt(_penaltyIncrementKey) ?? 1; // Default 1 question
+    return _prefsSafe.getInt(_penaltyIncrementKey) ?? 1; // Default 1 question
   }
 
   // Total Blocked Time (Read-only from native)
   int getTotalBlockedTime() {
-    return _prefs.getInt(_totalBlockedTimeKey) ?? 0;
+    return _prefsSafe.getInt(_totalBlockedTimeKey) ?? 0;
   }
 
   // Problem Lists
@@ -196,55 +299,114 @@ class StorageService {
   static const String _problemCompletionKey = 'problem_completion';
 
   Future<void> saveProblemLists(List<Map<String, dynamic>> lists) async {
-    await _prefs.setString(_problemListsKey, jsonEncode(lists));
+    await _prefsSafe.setString(_problemListsKey, jsonEncode(lists));
   }
 
   List<Map<String, dynamic>> getProblemLists() {
-    final jsonString = _prefs.getString(_problemListsKey);
+    final jsonString = _prefsSafe.getString(_problemListsKey);
     if (jsonString == null) return [];
-    final decoded = jsonDecode(jsonString) as List;
-    return decoded.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! List) {
+      return [];
+    }
+    return decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   Future<void> saveProblemCompletion(Map<String, bool> completion) async {
-    await _prefs.setString(_problemCompletionKey, jsonEncode(completion));
+    await _prefsSafe.setString(_problemCompletionKey, jsonEncode(completion));
   }
 
   Map<String, bool> getProblemCompletion() {
-    final jsonString = _prefs.getString(_problemCompletionKey);
+    final jsonString = _prefsSafe.getString(_problemCompletionKey);
     if (jsonString == null) return {};
-    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
-    return decoded.map((k, v) => MapEntry(k, v as bool));
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return {};
+    }
+
+    final result = <String, bool>{};
+    for (final entry in decoded.entries) {
+      result[entry.key.toString()] = _asBool(entry.value);
+    }
+    return result;
   }
 
   // Study Preferences
   static const String _studyPreferencesKey = 'study_preferences';
 
   Future<void> saveStudyPreferences(Map<String, dynamic> prefs) async {
-    await _prefs.setString(_studyPreferencesKey, jsonEncode(prefs));
+    await _prefsSafe.setString(_studyPreferencesKey, jsonEncode(prefs));
   }
 
   Map<String, dynamic> getStudyPreferences() {
-    final jsonString = _prefs.getString(_studyPreferencesKey);
+    final jsonString = _prefsSafe.getString(_studyPreferencesKey);
     if (jsonString == null) {
       return {
         'activeListId': null,
         'selectionMode': 'first', // 'first', 'easiest', 'random'
       };
     }
-    return Map<String, dynamic>.from(jsonDecode(jsonString) as Map);
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return {'activeListId': null, 'selectionMode': 'first'};
+    }
+    return Map<String, dynamic>.from(decoded);
   }
 
   // Cache default lists for native code to read
   static const String _cachedDefaultListsKey = 'cached_default_lists';
 
-  Future<void> cacheDefaultLists(Map<String, Map<String, dynamic>> lists) async {
-    await _prefs.setString(_cachedDefaultListsKey, jsonEncode(lists));
+  Future<void> cacheDefaultLists(
+    Map<String, Map<String, dynamic>> lists,
+  ) async {
+    await _prefsSafe.setString(_cachedDefaultListsKey, jsonEncode(lists));
   }
 
   // Clear all data
   Future<void> clearAll() async {
-    await _prefs.clear();
+    await _prefsSafe.clear();
+  }
+
+  dynamic _decodeJson(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+
+  bool _asBool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    if (value is String) {
+      final normalized = value.toLowerCase();
+      if (normalized == 'true' || normalized == '1') {
+        return true;
+      }
+      if (normalized == 'false' || normalized == '0') {
+        return false;
+      }
+    }
+    return false;
   }
 }
-

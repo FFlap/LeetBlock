@@ -7,12 +7,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.leetblock/app_blocker"
+    private val TAG = "MainActivity"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -34,8 +36,7 @@ class MainActivity: FlutterActivity() {
                     result.success(null)
                 }
                 "startBlockerService" -> {
-                    startBlockerService()
-                    result.success(null)
+                    result.success(startBlockerService())
                 }
                 "stopBlockerService" -> {
                     stopBlockerService()
@@ -102,12 +103,21 @@ class MainActivity: FlutterActivity() {
         startActivity(intent)
     }
 
-    private fun startBlockerService() {
-        val intent = Intent(this, AppBlockerService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+    private fun startBlockerService(): Boolean {
+        if (!hasUsageStatsPermission() || !hasOverlayPermission()) {
+            return false
+        }
+        return try {
+            val intent = Intent(this, AppBlockerService::class.java)
+            val componentName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            componentName != null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start blocker service", e)
+            false
         }
     }
 

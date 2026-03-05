@@ -47,7 +47,11 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _requestPermission() async {
-    await Permission.notification.request();
+    try {
+      await Permission.notification.request();
+    } catch (_) {
+      // Ignore plugin errors on unsupported platforms/test environments.
+    }
     if (mounted) {
       setState(() => _currentStep = 3);
     }
@@ -56,9 +60,7 @@ class _SetupScreenState extends State<SetupScreen> {
   Future<void> _goToAppSelection() async {
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AppSelectionScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AppSelectionScreen()),
     );
 
     if (result == true && mounted) {
@@ -82,9 +84,7 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 40),
               _buildStepIndicator(),
               const SizedBox(height: 40),
-              Expanded(
-                child: _buildCurrentStep(),
-              ),
+              Expanded(child: _buildCurrentStep()),
             ],
           ),
         ),
@@ -109,10 +109,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             Text(
               'Discipline through code',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                color: Colors.white54,
-              ),
+              style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
             ),
           ],
         ).animate().fadeIn(duration: 600.ms).slideX(begin: -0.2),
@@ -145,30 +142,32 @@ class _SetupScreenState extends State<SetupScreen> {
           color: isCurrent ? const Color(0xFFFFA116) : Colors.transparent,
           width: 2,
         ),
-        boxShadow: isCurrent
-            ? [
-                BoxShadow(
-                  color: const Color(0xFFFFA116).withOpacity(0.4),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                ),
-              ]
-            : null,
+        boxShadow:
+            isCurrent
+                ? [
+                  BoxShadow(
+                    color: const Color(0xFFFFA116).withOpacity(0.4),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ]
+                : null,
       ),
       child: Center(
-        child: isActive
-            ? Icon(
-                step < _currentStep ? Icons.check : _getStepIcon(step),
-                color: Colors.black,
-                size: 20,
-              )
-            : Text(
-                '${step + 1}',
-                style: GoogleFonts.inter(
-                  color: Colors.white54,
-                  fontWeight: FontWeight.bold,
+        child:
+            isActive
+                ? Icon(
+                  step < _currentStep ? Icons.check : _getStepIcon(step),
+                  color: Colors.black,
+                  size: 20,
+                )
+                : Text(
+                  '${step + 1}',
+                  style: GoogleFonts.inter(
+                    color: Colors.white54,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
       ),
     );
   }
@@ -237,23 +236,16 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               Text(
                 'We\'ll track your daily progress to unlock apps',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.white54,
-                ),
+                style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
               ).animate().fadeIn(delay: 400.ms),
               const SizedBox(height: 32),
               TextFormField(
+                key: const ValueKey('setup_username_input'),
                 controller: _usernameController,
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 18),
                 decoration: InputDecoration(
                   hintText: 'username',
-                  hintStyle: GoogleFonts.inter(
-                    color: Colors.white30,
-                  ),
+                  hintStyle: GoogleFonts.inter(color: Colors.white30),
                   filled: true,
                   fillColor: const Color(0xFF1E1E1E),
                   border: OutlineInputBorder(
@@ -267,9 +259,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       width: 2,
                     ),
                   ),
-                  errorStyle: GoogleFonts.inter(
-                    color: const Color(0xFFFF6B6B),
-                  ),
+                  errorStyle: GoogleFonts.inter(color: const Color(0xFFFF6B6B)),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -291,10 +281,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Color(0xFFFF6B6B),
-                      ),
+                      const Icon(Icons.error_outline, color: Color(0xFFFF6B6B)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -313,6 +300,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
+                  key: const ValueKey('setup_validate_username_button'),
                   onPressed: provider.isLoading ? null : _validateUsername,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFA116),
@@ -322,22 +310,23 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: provider.isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.black,
+                  child:
+                      provider.isLoading
+                          ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
+                          )
+                          : Text(
+                            'Continue',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        )
-                      : Text(
-                          'Continue',
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                 ),
               ).animate().fadeIn(delay: 600.ms),
             ],
@@ -362,10 +351,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'How many LeetCode problems must you solve daily?',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: Colors.white54,
-          ),
+          style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
         ).animate().fadeIn(delay: 100.ms),
         const SizedBox(height: 48),
         Center(
@@ -381,10 +367,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ).animate().fadeIn(delay: 200.ms).scale(),
               Text(
                 _selectedQuota == 1 ? 'problem per day' : 'problems per day',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  color: Colors.white54,
-                ),
+                style: GoogleFonts.inter(fontSize: 16, color: Colors.white54),
               ),
               const SizedBox(height: 32),
               Container(
@@ -401,6 +384,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                   ),
                   child: Slider(
+                    key: const ValueKey('setup_quota_slider'),
                     value: _selectedQuota.toDouble(),
                     min: 1,
                     max: 10,
@@ -417,14 +401,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '1',
-                      style: GoogleFonts.inter(color: Colors.white38),
-                    ),
-                    Text(
-                      '10',
-                      style: GoogleFonts.inter(color: Colors.white38),
-                    ),
+                    Text('1', style: GoogleFonts.inter(color: Colors.white38)),
+                    Text('10', style: GoogleFonts.inter(color: Colors.white38)),
                   ],
                 ),
               ),
@@ -436,6 +414,7 @@ class _SetupScreenState extends State<SetupScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
+            key: const ValueKey('setup_set_quota_button'),
             onPressed: _setQuota,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFA116),
@@ -473,10 +452,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'We need this to warn you before penalties and show the persistent blocker notification.',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: Colors.white54,
-          ),
+          style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
         ).animate().fadeIn(delay: 100.ms),
         const SizedBox(height: 48),
         Expanded(
@@ -499,10 +475,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Stay informed!',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    color: Colors.white70,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 18, color: Colors.white70),
                 ).animate().fadeIn(delay: 300.ms),
               ],
             ),
@@ -512,6 +485,7 @@ class _SetupScreenState extends State<SetupScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
+            key: const ValueKey('setup_request_notification_button'),
             onPressed: _requestPermission,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFA116),
@@ -533,6 +507,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 12),
         Center(
           child: TextButton(
+            key: const ValueKey('setup_skip_notification_button'),
             onPressed: () {
               if (mounted) {
                 setState(() => _currentStep = 3);
@@ -540,10 +515,7 @@ class _SetupScreenState extends State<SetupScreen> {
             },
             child: Text(
               'Skip for now',
-              style: GoogleFonts.inter(
-                color: Colors.white38,
-                fontSize: 14,
-              ),
+              style: GoogleFonts.inter(color: Colors.white38, fontSize: 14),
             ),
           ),
         ).animate().fadeIn(delay: 500.ms),
@@ -566,10 +538,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const SizedBox(height: 8),
         Text(
           'These apps will be blocked until you complete your daily quota',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: Colors.white54,
-          ),
+          style: GoogleFonts.inter(fontSize: 14, color: Colors.white54),
         ).animate().fadeIn(delay: 100.ms),
         const SizedBox(height: 48),
         Expanded(
@@ -592,10 +561,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 24),
                 Text(
                   'Choose wisely!',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    color: Colors.white70,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 18, color: Colors.white70),
                 ).animate().fadeIn(delay: 300.ms),
               ],
             ),
@@ -605,6 +571,7 @@ class _SetupScreenState extends State<SetupScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
+            key: const ValueKey('setup_go_to_app_selection_button'),
             onPressed: _goToAppSelection,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFA116),
