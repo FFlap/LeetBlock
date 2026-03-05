@@ -45,8 +45,9 @@ jobs:
         run: flutter test
 
       - name: Run Android unit tests
-        working-directory: android
-        run: ./gradlew testDebugUnitTest
+        run: |
+          chmod +x android/gradlew
+          ./android/gradlew -p android testDebugUnitTest
 
   integration-android:
     runs-on: ubuntu-latest
