@@ -748,7 +748,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   Widget _buildTotalSolvedCard(LeetBlockProvider provider) {
     final stats = provider.currentStats;
     final totalSolved = stats?.totalSolved ?? 0;
-    final streak = provider.currentStreak;
+    final streak = provider.displayStreak;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -805,6 +805,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                 Text(
                   'Streak',
                   style: GoogleFonts.inter(fontSize: 10, color: Colors.white38),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Higher of app-local and LeetCode',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    color: Colors.white30,
+                    height: 1.2,
+                  ),
                 ),
               ],
             ),

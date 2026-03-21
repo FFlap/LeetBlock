@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:leet_block/models/leetcode_stats.dart';
+import 'package:leet_block/models/streak_seed.dart';
 import 'package:leet_block/providers/leet_block_provider.dart';
 import 'package:leet_block/screens/statistics_screen.dart';
 import '../support/fakes.dart';
@@ -155,4 +156,80 @@ void main() {
       expect(find.text('Add Two Numbers'), findsOneWidget);
     },
   );
+
+  testWidgets('StatisticsScreen shows the max display streak and helper text', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 3, 21, 22, 0);
+    final fakeService = StubLeetCodeService(now: () => now)
+      ..fetchDetailedStatsResult = {
+        'stats': LeetCodeStats(
+          username: 'alice',
+          totalSolved: 1234,
+          easySolved: 500,
+          mediumSolved: 600,
+          hardSolved: 134,
+          recentSubmissions: 0,
+          lastFetched: now,
+          totalEasy: 800,
+          totalMedium: 1500,
+          totalHard: 700,
+        ),
+        'streak': 8,
+        'recentProblems': const [],
+        'submissionCalendar': '{}',
+      };
+
+    final provider = await createInitializedProvider(
+      now: () => now,
+      leetCodeService: fakeService,
+      initialPrefs: {
+        'leetcode_username': 'alice',
+        'daily_quota': 1,
+        'daily_progress': jsonEncode(
+          DailyProgress(
+            date: now,
+            questionsCompletedToday: 0,
+            dailyQuota: 1,
+            startOfDayTotal: 1234,
+          ).toJson(),
+        ),
+        'streak_seed': jsonEncode(
+          StreakSeed(
+            username: 'alice',
+            count: 12,
+            date: now.subtract(const Duration(days: 1)),
+          ).toJson(),
+        ),
+        'last_stats': jsonEncode(
+          LeetCodeStats(
+            username: 'alice',
+            totalSolved: 1234,
+            easySolved: 500,
+            mediumSolved: 600,
+            hardSolved: 134,
+            recentSubmissions: 0,
+            lastFetched: now,
+            totalEasy: 800,
+            totalMedium: 1500,
+            totalHard: 700,
+          ).toJson(),
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<LeetBlockProvider>.value(
+        value: provider,
+        child: const MaterialApp(home: StatisticsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('LeetCode'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Higher of app-local and LeetCode'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+  });
 }

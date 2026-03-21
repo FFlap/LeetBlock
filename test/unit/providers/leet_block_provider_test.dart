@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:leet_block/models/leetcode_stats.dart';
 import 'package:leet_block/models/problem.dart';
 import 'package:leet_block/models/problem_list.dart';
+import 'package:leet_block/models/streak_seed.dart';
 import '../../support/fakes.dart';
 import '../../support/platform_channel_mock.dart';
 import '../../support/provider_test_harness.dart';
@@ -125,6 +126,219 @@ void main() {
 
     await platformMock.uninstall();
   });
+
+  test('completeSetup seeds app streak from live LeetCode streak', () async {
+    final now = DateTime(2026, 3, 20, 20, 0);
+    final stats = LeetCodeStats(
+      username: 'alice',
+      totalSolved: 250,
+      easySolved: 100,
+      mediumSolved: 120,
+      hardSolved: 30,
+      recentSubmissions: 0,
+      lastFetched: now,
+      totalEasy: 800,
+      totalMedium: 1500,
+      totalHard: 700,
+    );
+
+    final fakeService = StubLeetCodeService(now: () => now)
+      ..fetchDetailedStatsResult = {
+        'stats': stats,
+        'streak': 20,
+        'recentProblems': const [],
+      };
+
+    final provider = await createInitializedProvider(
+      now: () => now,
+      leetCodeService: fakeService,
+      initialPrefs: {
+        'leetcode_username': 'alice',
+        'last_stats': jsonEncode(stats.toJson()),
+      },
+    );
+
+    await provider.completeSetup();
+
+    expect(provider.leetcodeStreak, 20);
+    expect(provider.appStreak, 20);
+    expect(provider.displayStreak, 20);
+
+    final prefs = await SharedPreferences.getInstance();
+    final seedJson = prefs.getString('streak_seed');
+    expect(seedJson, isNotNull);
+    final seed = StreakSeed.fromJson(
+      jsonDecode(seedJson!) as Map<String, dynamic>,
+    );
+    expect(seed.username, 'alice');
+    expect(seed.count, 20);
+    expect(seed.date.year, now.year);
+    expect(seed.date.month, now.month);
+    expect(seed.date.day, now.day);
+  });
+
+  test(
+    'display streak preserves seeded streak before local day ends',
+    () async {
+      final now = DateTime(2026, 3, 21, 22, 0);
+      final provider = await createInitializedProvider(
+        now: () => now,
+        leetCodeService: StubLeetCodeService(now: () => now),
+        initialPrefs: {
+          'leetcode_username': 'alice',
+          'daily_quota': 1,
+          'daily_progress': jsonEncode(
+            DailyProgress(
+              date: now,
+              questionsCompletedToday: 0,
+              dailyQuota: 1,
+              startOfDayTotal: 250,
+            ).toJson(),
+          ),
+          'streak_seed': jsonEncode(
+            StreakSeed(
+              username: 'alice',
+              count: 20,
+              date: now.subtract(const Duration(days: 1)),
+            ).toJson(),
+          ),
+        },
+      );
+
+      expect(provider.appStreak, 20);
+      expect(provider.displayStreak, 20);
+    },
+  );
+
+  test(
+    'seeded app streak increments across consecutive local completions',
+    () async {
+      final now = DateTime(2026, 3, 22, 21, 0);
+      final provider = await createInitializedProvider(
+        now: () => now,
+        leetCodeService: StubLeetCodeService(now: () => now),
+        initialPrefs: {
+          'leetcode_username': 'alice',
+          'daily_quota': 1,
+          'daily_progress': jsonEncode(
+            DailyProgress(
+              date: now,
+              questionsCompletedToday: 1,
+              dailyQuota: 1,
+              startOfDayTotal: 250,
+            ).toJson(),
+          ),
+          'daily_completion_history': jsonEncode({
+            '2026-03-21': true,
+            '2026-03-22': true,
+          }),
+          'streak_seed': jsonEncode(
+            StreakSeed(
+              username: 'alice',
+              count: 20,
+              date: DateTime(2026, 3, 20, 18, 0),
+            ).toJson(),
+          ),
+        },
+      );
+
+      expect(provider.appStreak, 22);
+      expect(provider.displayStreak, 22);
+    },
+  );
+
+  test('seeded app streak breaks after a missed local day', () async {
+    final now = DateTime(2026, 3, 23, 21, 0);
+    final provider = await createInitializedProvider(
+      now: () => now,
+      leetCodeService: StubLeetCodeService(now: () => now),
+      initialPrefs: {
+        'leetcode_username': 'alice',
+        'daily_quota': 1,
+        'daily_progress': jsonEncode(
+          DailyProgress(
+            date: now,
+            questionsCompletedToday: 1,
+            dailyQuota: 1,
+            startOfDayTotal: 250,
+          ).toJson(),
+        ),
+        'daily_completion_history': jsonEncode({
+          '2026-03-21': true,
+          '2026-03-22': false,
+          '2026-03-23': true,
+        }),
+        'streak_seed': jsonEncode(
+          StreakSeed(
+            username: 'alice',
+            count: 20,
+            date: DateTime(2026, 3, 20, 18, 0),
+          ).toJson(),
+        ),
+      },
+    );
+
+    expect(provider.appStreak, 1);
+    expect(provider.displayStreak, 1);
+  });
+
+  test(
+    'display streak uses the larger of app and live LeetCode streak',
+    () async {
+      final now = DateTime(2026, 3, 22, 21, 0);
+      final fakeService = StubLeetCodeService(now: () => now)
+        ..fetchDetailedStatsResult = {
+          'stats': LeetCodeStats(
+            username: 'alice',
+            totalSolved: 250,
+            easySolved: 100,
+            mediumSolved: 120,
+            hardSolved: 30,
+            recentSubmissions: 1,
+            lastFetched: now,
+            totalEasy: 800,
+            totalMedium: 1500,
+            totalHard: 700,
+          ),
+          'streak': 25,
+          'recentProblems': const [],
+        };
+
+      final provider = await createInitializedProvider(
+        now: () => now,
+        leetCodeService: fakeService,
+        initialPrefs: {
+          'leetcode_username': 'alice',
+          'daily_quota': 1,
+          'daily_progress': jsonEncode(
+            DailyProgress(
+              date: now,
+              questionsCompletedToday: 1,
+              dailyQuota: 1,
+              startOfDayTotal: 250,
+            ).toJson(),
+          ),
+          'daily_completion_history': jsonEncode({
+            '2026-03-21': true,
+            '2026-03-22': true,
+          }),
+          'streak_seed': jsonEncode(
+            StreakSeed(
+              username: 'alice',
+              count: 20,
+              date: DateTime(2026, 3, 20, 18, 0),
+            ).toJson(),
+          ),
+        },
+      );
+
+      await provider.fetchDetailedStats();
+
+      expect(provider.appStreak, 22);
+      expect(provider.leetcodeStreak, 25);
+      expect(provider.displayStreak, 25);
+    },
+  );
 
   test('getNextProblemUrl respects unsolvedOnly and skipPremium', () async {
     final now = DateTime(2026, 2, 28, 10, 0);

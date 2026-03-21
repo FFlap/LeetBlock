@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:leet_block/models/streak_seed.dart';
 import 'package:leet_block/services/storage_service.dart';
 
 Future<StorageService> _buildStorage(Map<String, Object> initialValues) async {
@@ -20,6 +21,7 @@ void main() {
       'daily_screen_time_history': '{bad-json',
       'daily_app_usage_history': '{bad-json',
       'last_stats': '{bad-json',
+      'streak_seed': '{bad-json',
       'problem_lists': '{bad-json',
       'problem_completion': '{bad-json',
       'study_preferences': '{bad-json',
@@ -31,6 +33,7 @@ void main() {
     expect(storage.getDailyScreenTimeHistory(), isEmpty);
     expect(storage.getDailyAppUsageHistory(), isEmpty);
     expect(storage.getLastStats(), isNull);
+    expect(storage.getStreakSeed(), isNull);
     expect(storage.getProblemLists(), isEmpty);
     expect(storage.getProblemCompletion(), isEmpty);
     expect(storage.getStudyPreferences()['activeListId'], isNull);
@@ -68,5 +71,22 @@ void main() {
 
     expect(prefs, containsPair('activeListId', isNull));
     expect(prefs, containsPair('selectionMode', 'first'));
+  });
+
+  test('streak seed round-trips safely', () async {
+    final storage = await _buildStorage({});
+    final seed = StreakSeed(
+      username: 'alice',
+      count: 20,
+      date: DateTime(2026, 3, 20, 21, 0),
+    );
+
+    await storage.saveStreakSeed(seed);
+
+    final restored = storage.getStreakSeed();
+    expect(restored, isNotNull);
+    expect(restored!.username, 'alice');
+    expect(restored.count, 20);
+    expect(restored.date, DateTime(2026, 3, 20, 21, 0));
   });
 }

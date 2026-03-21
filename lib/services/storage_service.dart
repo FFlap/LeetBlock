@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_info.dart';
 import '../models/leetcode_stats.dart';
+import '../models/streak_seed.dart';
 
 class StorageService {
   static const String _usernameKey = 'leetcode_username';
@@ -18,6 +19,7 @@ class StorageService {
 
   static const String _penaltyIncrementKey = 'penalty_increment';
   static const String _totalBlockedTimeKey = 'total_blocked_time';
+  static const String _streakSeedKey = 'streak_seed';
 
   final SharedPreferences? _providedPrefs;
   late SharedPreferences _prefs;
@@ -235,6 +237,33 @@ class StorageService {
     } catch (_) {
       return null;
     }
+  }
+
+  // Streak Seed
+  Future<void> saveStreakSeed(StreakSeed seed) async {
+    await _prefsSafe.setString(_streakSeedKey, jsonEncode(seed.toJson()));
+  }
+
+  StreakSeed? getStreakSeed() {
+    final jsonString = _prefsSafe.getString(_streakSeedKey);
+    if (jsonString == null) {
+      return null;
+    }
+
+    final decoded = _decodeJson(jsonString);
+    if (decoded is! Map) {
+      return null;
+    }
+
+    try {
+      return StreakSeed.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearStreakSeed() async {
+    await _prefsSafe.remove(_streakSeedKey);
   }
 
   // Setup Complete Flag

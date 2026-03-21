@@ -4,6 +4,7 @@ import '../models/app_info.dart';
 import '../models/leetcode_stats.dart';
 import '../models/problem.dart';
 import '../models/problem_list.dart';
+import '../models/streak_seed.dart';
 import '../services/installed_apps_gateway.dart';
 import '../services/leetcode_service.dart';
 import '../services/storage_service.dart';
@@ -45,7 +46,9 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isSetupComplete = false;
   String? _error;
   Map<String, dynamic>? _detailedStats;
-  int _currentStreak = 0;
+  StreakSeed? _streakSeed;
+  int _leetcodeStreak = 0;
+  int _appStreak = 0;
   int _totalBlockedTime = 0;
   Map<String, bool> _completionHistory = {};
 
@@ -66,7 +69,10 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get isSetupComplete => _isSetupComplete;
   String? get error => _error;
   Map<String, dynamic>? get detailedStats => _detailedStats;
-  int get currentStreak => _currentStreak;
+  int get leetcodeStreak => _leetcodeStreak;
+  int get appStreak => _appStreak;
+  int get displayStreak => max(_appStreak, _leetcodeStreak);
+  int get currentStreak => displayStreak;
   int get totalBlockedTime => _totalBlockedTime;
   Map<String, bool> get completionHistory => _completionHistory;
   Map<String, int> get screenTimeHistory {
@@ -167,7 +173,10 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (savedProgress != null) {
       _dailyProgress = savedProgress;
       _totalBlockedTime = _storageService.getTotalBlockedTime();
+      _completionHistory = _storageService.getDailyCompletionHistory();
+      _streakSeed = _storageService.getStreakSeed();
       await _checkNewDay();
+      _recomputeStreaks();
       notifyListeners();
     }
   }
@@ -188,6 +197,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     _totalBlockedTime = _storageService.getTotalBlockedTime();
     _isSetupComplete = _storageService.isSetupComplete();
     _completionHistory = _storageService.getDailyCompletionHistory();
+    _streakSeed = _storageService.getStreakSeed();
 
     // Load blocked apps
     final savedBlockedApps = _storageService.getBlockedApps();
@@ -197,6 +207,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     // Check if it's a new day
     await _checkNewDay();
+    _recomputeStreaks();
 
     notifyListeners();
   }
@@ -300,6 +311,8 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
       final result = await _leetCodeService.fetchDetailedStats(_username);
       if (result != null) {
         _detailedStats = result;
+        _leetcodeStreak = _asInt(result['streak']);
+        _recomputeStreaks();
         await syncSolvedProblemsToLists();
       }
     } catch (e, st) {
@@ -832,6 +845,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _storageService.setSetupComplete(true);
     await _storageService.saveDailyProgress(_dailyProgress!);
     await _updateHistory();
+    await _seedStreakFromLeetCodeIfNeeded();
     notifyListeners();
   }
 
@@ -864,7 +878,9 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     _isSetupComplete = false;
     _error = null;
     _detailedStats = null;
-    _currentStreak = 0;
+    _streakSeed = null;
+    _leetcodeStreak = 0;
+    _appStreak = 0;
     _totalBlockedTime = 0;
     _completionHistory = {};
     notifyListeners();
@@ -908,12 +924,13 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       // Refresh completion history from storage (may have been updated by another session)
       _completionHistory = _storageService.getDailyCompletionHistory();
+      _streakSeed = _storageService.getStreakSeed();
 
       final result = await _leetCodeService.fetchDetailedStats(_username);
 
       if (result != null) {
         _detailedStats = result;
-        _currentStreak = result['streak'] ?? 0;
+        _leetcodeStreak = _asInt(result['streak']);
 
         // Also update current stats if available
         if (result['stats'] != null) {
@@ -921,6 +938,7 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
           await _storageService.saveLastStats(_currentStats!);
         }
       }
+      _recomputeStreaks();
     } catch (e) {
       _error = 'Failed to fetch detailed stats: $e';
     }
@@ -1115,14 +1133,146 @@ class LeetBlockProvider extends ChangeNotifier with WidgetsBindingObserver {
     return selectedProblem.url;
   }
 
+  Future<void> _seedStreakFromLeetCodeIfNeeded() async {
+    if (_username.isEmpty) {
+      return;
+    }
+    if (_streakSeed != null && _streakSeed!.username == _username) {
+      return;
+    }
+
+    var liveStreak = _leetcodeStreak;
+    if (liveStreak <= 0) {
+      final result = await _leetCodeService.fetchDetailedStats(_username);
+      if (result != null) {
+        _detailedStats = result;
+        _leetcodeStreak = _asInt(result['streak']);
+        liveStreak = _leetcodeStreak;
+
+        if (result['stats'] != null) {
+          _currentStats = result['stats'] as LeetCodeStats;
+          await _storageService.saveLastStats(_currentStats!);
+        }
+      }
+    }
+
+    if (liveStreak <= 0) {
+      _recomputeStreaks();
+      return;
+    }
+
+    _streakSeed = StreakSeed(
+      username: _username,
+      count: liveStreak,
+      date: _localDay(_now()),
+    );
+    await _storageService.saveStreakSeed(_streakSeed!);
+    _recomputeStreaks();
+  }
+
+  void _recomputeStreaks() {
+    _appStreak = _computeAppStreak();
+  }
+
+  int _computeAppStreak() {
+    final evaluationDay = _streakEvaluationDay();
+    if (evaluationDay == null) {
+      return 0;
+    }
+
+    final seed = _activeSeed;
+    if (seed == null) {
+      return _countConsecutiveCompletedDays(evaluationDay);
+    }
+
+    final seedDay = _localDay(seed.date);
+    if (!evaluationDay.isAfter(seedDay)) {
+      return seed.count;
+    }
+
+    var postSeedCompletedDays = 0;
+    var day = evaluationDay;
+    while (day.isAfter(seedDay)) {
+      if (!_isDayComplete(day)) {
+        return _countConsecutiveCompletedDays(evaluationDay);
+      }
+      postSeedCompletedDays++;
+      day = day.subtract(const Duration(days: 1));
+    }
+
+    return seed.count + postSeedCompletedDays;
+  }
+
+  int _countConsecutiveCompletedDays(DateTime evaluationDay) {
+    var count = 0;
+    var day = evaluationDay;
+    while (_isDayComplete(day)) {
+      count++;
+      day = day.subtract(const Duration(days: 1));
+    }
+    return count;
+  }
+
+  DateTime? _streakEvaluationDay() {
+    final today = _localDay(_now());
+    if (isBaseQuotaMet) {
+      return today;
+    }
+    return today.subtract(const Duration(days: 1));
+  }
+
+  StreakSeed? get _activeSeed {
+    if (_streakSeed == null) {
+      return null;
+    }
+    if (_streakSeed!.username != _username) {
+      return null;
+    }
+    return _streakSeed;
+  }
+
+  bool _isDayComplete(DateTime day) {
+    final localDay = _localDay(day);
+    final today = _localDay(_now());
+    if (_isSameDay(localDay, today)) {
+      return isBaseQuotaMet;
+    }
+    return _completionHistory[_dateKey(localDay)] == true;
+  }
+
+  DateTime _localDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _dateKey(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+
   Future<void> _updateHistory() async {
     if (_dailyProgress != null) {
-      final date = _dailyProgress!.date;
-      final dateKey =
-          "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      final dateKey = _dateKey(_dailyProgress!.date);
       // Use isBaseQuotaMet for weekly goal tracking (ignoring penalty)
       _completionHistory[dateKey] = _dailyProgress!.isBaseQuotaMet;
       await _storageService.saveDailyCompletionHistory(_completionHistory);
+      _recomputeStreaks();
     }
   }
 }
