@@ -27,16 +27,62 @@ class AppBlockerServiceProgressCheckTest {
             dateIso = AppBlockerServiceTestHarness.isoNow(nowMillis),
             penaltyEnabled = false,
         )
+        AppBlockerServiceTestHarness.prefs(service).edit()
+            .putString(
+                "flutter.cached_default_lists",
+                org.json.JSONObject()
+                    .put(
+                        "blind75",
+                        org.json.JSONObject().put(
+                            "categories",
+                            org.json.JSONObject().put(
+                                "Array",
+                                org.json.JSONArray()
+                                    .put(
+                                        org.json.JSONObject()
+                                            .put("id", "1")
+                                            .put("title", "Two Sum")
+                                            .put("difficulty", "Easy")
+                                            .put("url", "https://leetcode.com/problems/two-sum/")
+                                            .put("isPremium", false),
+                                    )
+                                    .put(
+                                        org.json.JSONObject()
+                                            .put("id", "121")
+                                            .put("title", "Best Time to Buy and Sell Stock")
+                                            .put("difficulty", "Easy")
+                                            .put("url", "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/")
+                                            .put("isPremium", false),
+                                    ),
+                            ),
+                        ),
+                    )
+                    .toString(),
+            )
+            .putString(
+                "flutter.study_preferences",
+                org.json.JSONObject()
+                    .put("activeListId", "blind75")
+                    .put("random", false)
+                    .put("unsolvedOnly", true)
+                    .put("easiestFirst", false)
+                    .put("skipPremium", true)
+                    .toString(),
+            )
+            .commit()
 
         service.nowMillisProvider = { nowMillis }
         service.foregroundAppResolver = { AppBlockerServiceTestHarness.blockedPackage }
         service.usageSnapshotProvider = { UsageSnapshot(totalBlockedTimeMs = 0L, perAppTimeMs = emptyMap()) }
 
         var fetchCalls = 0
-        service.todaySubmissionsFetcher = { username ->
+        service.acceptedSubmissionFetcher = { username ->
             fetchCalls++
             assertEquals("offline-tester", username)
-            2
+            AcceptedSubmissionSnapshot(
+                todayCount = 2,
+                recentAcceptedTitles = setOf("Two Sum"),
+            )
         }
 
         service.runForegroundCheckForTest()
@@ -47,8 +93,14 @@ class AppBlockerServiceProgressCheckTest {
         AppBlockerServiceTestHarness.idleMainLooper()
 
         val progress = AppBlockerServiceTestHarness.readDailyProgress(service)
+        val completion = AppBlockerServiceTestHarness.readProblemCompletion(service)
         assertEquals(2, progress.getInt("questionsCompletedToday"))
         assertEquals(0, progress.getInt("quotaPenalty"))
+        assertTrue(completion.optBoolean("blind75_1"))
+        assertEquals(
+            "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/",
+            service.getNextProblemUrlForTest(),
+        )
         assertEquals(1, fetchCalls)
         assertTrue(service.overlayStatusTextForTest()?.contains("Quota met! Unlocking...") == true)
 
@@ -103,7 +155,12 @@ class AppBlockerServiceProgressCheckTest {
 
         service.nowMillisProvider = { nowMillis }
         service.foregroundAppResolver = { AppBlockerServiceTestHarness.blockedPackage }
-        service.todaySubmissionsFetcher = { _ -> -1 }
+        service.acceptedSubmissionFetcher = {
+            AcceptedSubmissionSnapshot(
+                todayCount = -1,
+                recentAcceptedTitles = emptySet(),
+            )
+        }
 
         service.runForegroundCheckForTest()
         AppBlockerServiceTestHarness.idleMainLooper()

@@ -4,7 +4,9 @@ import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -137,5 +139,269 @@ class AppBlockerServiceNextProblemSelectionTest {
         prefs.edit().putString("flutter.study_preferences", JSONObject().toString()).commit()
 
         assertNull(service.getNextProblemUrlForTest())
+    }
+
+    @Test
+    fun progressCheckAdvancesRecommendationAfterMatchingSolvedTitle() {
+        val nowMillis = 1772308800000L // 2026-03-01T12:00:00Z
+        val service = AppBlockerServiceTestHarness.buildService()
+        AppBlockerServiceTestHarness.seedPrefs(
+            service = service,
+            dailyQuota = 2,
+            completed = 0,
+            penalty = 0,
+            dateIso = AppBlockerServiceTestHarness.isoNow(nowMillis),
+            penaltyEnabled = false,
+        )
+        val prefs = AppBlockerServiceTestHarness.prefs(service)
+
+        val cachedBlind75 = JSONObject()
+            .put(
+                "categories",
+                JSONObject().put(
+                    "Array",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "1")
+                                .put("title", "Two Sum")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/two-sum/")
+                                .put("isPremium", false),
+                        )
+                        .put(
+                            JSONObject()
+                                .put("id", "121")
+                                .put("title", "Best Time to Buy and Sell Stock")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/")
+                                .put("isPremium", false),
+                        ),
+                ),
+            )
+
+        val customList = JSONObject()
+            .put("id", "custom")
+            .put("name", "Custom")
+            .put("isCustom", true)
+            .put(
+                "categories",
+                JSONObject().put(
+                    "DP",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "10")
+                                .put("title", "Climbing Stairs")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/climbing-stairs/")
+                                .put("isPremium", false),
+                        ),
+                ),
+            )
+
+        prefs.edit()
+            .putString(
+                "flutter.cached_default_lists",
+                JSONObject().put("blind75", cachedBlind75).toString(),
+            )
+            .putString("flutter.problem_lists", JSONArray().put(customList).toString())
+            .putString(
+                "flutter.study_preferences",
+                JSONObject()
+                    .put("activeListId", "blind75")
+                    .put("random", false)
+                    .put("unsolvedOnly", true)
+                    .put("easiestFirst", false)
+                    .put("skipPremium", true)
+                    .toString(),
+            )
+            .commit()
+
+        assertEquals(
+            "https://leetcode.com/problems/two-sum/",
+            service.getNextProblemUrlForTest(),
+        )
+
+        service.nowMillisProvider = { nowMillis }
+        service.foregroundAppResolver = { AppBlockerServiceTestHarness.blockedPackage }
+        service.acceptedSubmissionFetcher = {
+            AcceptedSubmissionSnapshot(
+                todayCount = 1,
+                recentAcceptedTitles = setOf("Two Sum", "Climbing Stairs"),
+            )
+        }
+
+        service.runForegroundCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+        service.runProgressCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+
+        val completion = AppBlockerServiceTestHarness.readProblemCompletion(service)
+        assertTrue(completion.optBoolean("blind75_1"))
+        assertTrue(completion.optBoolean("custom_10"))
+        assertEquals(
+            "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/",
+            service.getNextProblemUrlForTest(),
+        )
+    }
+
+    @Test
+    fun progressCheckDoesNotAdvanceRecommendationWhenSolvedTitlesDoNotMatch() {
+        val nowMillis = 1772308800000L // 2026-03-01T12:00:00Z
+        val service = AppBlockerServiceTestHarness.buildService()
+        AppBlockerServiceTestHarness.seedPrefs(
+            service = service,
+            dailyQuota = 2,
+            completed = 0,
+            penalty = 0,
+            dateIso = AppBlockerServiceTestHarness.isoNow(nowMillis),
+            penaltyEnabled = false,
+        )
+        val prefs = AppBlockerServiceTestHarness.prefs(service)
+
+        val cachedBlind75 = JSONObject()
+            .put(
+                "categories",
+                JSONObject().put(
+                    "Array",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "1")
+                                .put("title", "Two Sum")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/two-sum/")
+                                .put("isPremium", false),
+                        )
+                        .put(
+                            JSONObject()
+                                .put("id", "121")
+                                .put("title", "Best Time to Buy and Sell Stock")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/")
+                                .put("isPremium", false),
+                        ),
+                ),
+            )
+
+        prefs.edit()
+            .putString(
+                "flutter.cached_default_lists",
+                JSONObject().put("blind75", cachedBlind75).toString(),
+            )
+            .putString(
+                "flutter.study_preferences",
+                JSONObject()
+                    .put("activeListId", "blind75")
+                    .put("random", false)
+                    .put("unsolvedOnly", true)
+                    .put("easiestFirst", false)
+                    .put("skipPremium", true)
+                    .toString(),
+            )
+            .commit()
+
+        service.nowMillisProvider = { nowMillis }
+        service.foregroundAppResolver = { AppBlockerServiceTestHarness.blockedPackage }
+        service.acceptedSubmissionFetcher = {
+            AcceptedSubmissionSnapshot(
+                todayCount = 1,
+                recentAcceptedTitles = setOf("Some Other Problem"),
+            )
+        }
+
+        service.runForegroundCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+        service.runProgressCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+
+        val completion = AppBlockerServiceTestHarness.readProblemCompletion(service)
+        assertFalse(completion.optBoolean("blind75_1"))
+        assertEquals(
+            "https://leetcode.com/problems/two-sum/",
+            service.getNextProblemUrlForTest(),
+        )
+    }
+
+    @Test
+    fun nextDayRecommendationSkipsProblemSyncedByPreviousDayProgressCheck() {
+        val dayOneMillis = 1772308800000L // 2026-03-01T12:00:00Z
+        val dayTwoMillis = dayOneMillis + 24L * 60L * 60L * 1000L
+        val service = AppBlockerServiceTestHarness.buildService()
+        AppBlockerServiceTestHarness.seedPrefs(
+            service = service,
+            dailyQuota = 2,
+            completed = 0,
+            penalty = 0,
+            dateIso = AppBlockerServiceTestHarness.isoNow(dayOneMillis),
+            penaltyEnabled = false,
+        )
+        val prefs = AppBlockerServiceTestHarness.prefs(service)
+
+        val cachedBlind75 = JSONObject()
+            .put(
+                "categories",
+                JSONObject().put(
+                    "Array",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "1")
+                                .put("title", "Two Sum")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/two-sum/")
+                                .put("isPremium", false),
+                        )
+                        .put(
+                            JSONObject()
+                                .put("id", "121")
+                                .put("title", "Best Time to Buy and Sell Stock")
+                                .put("difficulty", "Easy")
+                                .put("url", "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/")
+                                .put("isPremium", false),
+                        ),
+                ),
+            )
+
+        prefs.edit()
+            .putString(
+                "flutter.cached_default_lists",
+                JSONObject().put("blind75", cachedBlind75).toString(),
+            )
+            .putString(
+                "flutter.study_preferences",
+                JSONObject()
+                    .put("activeListId", "blind75")
+                    .put("random", false)
+                    .put("unsolvedOnly", true)
+                    .put("easiestFirst", false)
+                    .put("skipPremium", true)
+                    .toString(),
+            )
+            .commit()
+
+        service.nowMillisProvider = { dayOneMillis }
+        service.foregroundAppResolver = { AppBlockerServiceTestHarness.blockedPackage }
+        service.acceptedSubmissionFetcher = {
+            AcceptedSubmissionSnapshot(
+                todayCount = 1,
+                recentAcceptedTitles = setOf("Two Sum"),
+            )
+        }
+
+        service.runForegroundCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+        service.runProgressCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+
+        service.nowMillisProvider = { dayTwoMillis }
+        service.runForegroundCheckForTest()
+        AppBlockerServiceTestHarness.idleMainLooper()
+
+        assertEquals(
+            "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/",
+            service.getNextProblemUrlForTest(),
+        )
     }
 }

@@ -80,6 +80,11 @@ internal object AppBlockerServiceTestHarness {
         return JSONObject(json)
     }
 
+    fun readProblemCompletion(service: AppBlockerService): JSONObject {
+        val json = prefs(service).getString("flutter.problem_completion", "{}") ?: "{}"
+        return JSONObject(json)
+    }
+
     fun idleMainLooper() {
         shadowOf(Looper.getMainLooper()).idle()
     }

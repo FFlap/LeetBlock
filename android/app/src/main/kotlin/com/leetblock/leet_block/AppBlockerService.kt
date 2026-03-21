@@ -42,6 +42,11 @@ internal data class UsageSnapshot(
     val perAppTimeMs: Map<String, Long>,
 )
 
+internal data class AcceptedSubmissionSnapshot(
+    val todayCount: Int,
+    val recentAcceptedTitles: Set<String>,
+)
+
 class AppBlockerService : Service() {
     
     companion object {
@@ -72,7 +77,7 @@ class AppBlockerService : Service() {
     // Internal test hooks (defaults preserve production behavior)
     @VisibleForTesting internal var foregroundAppResolver: (() -> String?)? = null
     @VisibleForTesting internal var overlayPermissionChecker: (() -> Boolean)? = null
-    @VisibleForTesting internal var todaySubmissionsFetcher: ((String) -> Int)? = null
+    @VisibleForTesting internal var acceptedSubmissionFetcher: ((String) -> AcceptedSubmissionSnapshot)? = null
     @VisibleForTesting internal var usageSnapshotProvider: ((Set<String>) -> UsageSnapshot)? = null
     @VisibleForTesting internal var backgroundExecutor: ((Runnable) -> Unit)? = null
     @VisibleForTesting internal var penaltyWarningObserver: ((Int) -> Unit)? = null
@@ -753,7 +758,8 @@ class AppBlockerService : Service() {
         // Fetch from LeetCode in background
         runInBackground {
             try {
-                val todaySubmissions = fetchTodaySubmissions(username)
+                val submissionSnapshot = fetchAcceptedSubmissions(username)
+                val todaySubmissions = submissionSnapshot.todayCount
                 
                 if (todaySubmissions >= 0) {
                     // Calculate penalty
@@ -761,6 +767,7 @@ class AppBlockerService : Service() {
                     
                     // Update SharedPreferences
                     updateDailyProgress(todaySubmissions, penalty)
+                    syncProblemCompletionFromAcceptedTitles(submissionSnapshot.recentAcceptedTitles)
                     
                     val (completed, quota) = getQuotaInfo()
                     val remaining = (quota - completed).coerceAtLeast(0)
@@ -816,12 +823,13 @@ class AppBlockerService : Service() {
         }
     }
     
-    private fun fetchTodaySubmissions(username: String): Int {
-        todaySubmissionsFetcher?.let { return it.invoke(username) }
+    private fun fetchAcceptedSubmissions(username: String): AcceptedSubmissionSnapshot {
+        acceptedSubmissionFetcher?.let { return it.invoke(username) }
 
         val query = """
             query getUserProfile(${"$"}username: String!) {
                 recentAcSubmissionList(username: ${"$"}username, limit: 50) {
+                    title
                     timestamp
                 }
             }
@@ -857,7 +865,10 @@ class AppBlockerService : Service() {
                 
                 if (submissions == null) {
                     Log.e(TAG, "No submissions array in response")
-                    return -1
+                    return AcceptedSubmissionSnapshot(
+                        todayCount = -1,
+                        recentAcceptedTitles = emptySet(),
+                    )
                 }
                 
                 // Count submissions from today
@@ -869,8 +880,13 @@ class AppBlockerService : Service() {
                 }.timeInMillis / 1000  // Convert to seconds
                 
                 var todayCount = 0
+                val recentTitles = linkedSetOf<String>()
                 for (i in 0 until submissions.length()) {
                     val submission = submissions.getJSONObject(i)
+                    val title = submission.optString("title", "").trim()
+                    if (title.isNotEmpty()) {
+                        recentTitles.add(title)
+                    }
                     val timestamp = submission.getString("timestamp").toLong()
                     if (timestamp >= todayStart) {
                         todayCount++
@@ -878,14 +894,113 @@ class AppBlockerService : Service() {
                 }
                 
                 Log.d(TAG, "Found $todayCount submissions today for $username")
-                return todayCount
+                return AcceptedSubmissionSnapshot(
+                    todayCount = todayCount,
+                    recentAcceptedTitles = recentTitles,
+                )
             } else {
                 Log.e(TAG, "HTTP error: ${connection.responseCode}")
-                return -1
+                return AcceptedSubmissionSnapshot(
+                    todayCount = -1,
+                    recentAcceptedTitles = emptySet(),
+                )
             }
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun syncProblemCompletionFromAcceptedTitles(recentAcceptedTitles: Set<String>) {
+        if (recentAcceptedTitles.isEmpty()) {
+            return
+        }
+
+        try {
+            val normalizedSolvedTitles =
+                recentAcceptedTitles
+                    .mapNotNull { normalizeProblemTitle(it) }
+                    .toSet()
+
+            if (normalizedSolvedTitles.isEmpty()) {
+                return
+            }
+
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val completionJson = prefs.getString("flutter.problem_completion", null)
+            val completion =
+                try {
+                    if (completionJson != null) JSONObject(completionJson) else JSONObject()
+                } catch (_: Exception) {
+                    JSONObject()
+                }
+            var hasChanges = false
+
+            for ((listId, problems) in getAllProblemsForCompletionSync()) {
+                for (problem in problems) {
+                    val normalizedTitle = normalizeProblemTitle(problem.title) ?: continue
+                    val cleanTitle = stripPremiumSuffix(normalizedTitle)
+                    if (normalizedSolvedTitles.contains(normalizedTitle) ||
+                        normalizedSolvedTitles.contains(cleanTitle)
+                    ) {
+                        val key = "${listId}_${problem.id}"
+                        if (!completion.optBoolean(key, false)) {
+                            completion.put(key, true)
+                            hasChanges = true
+                        }
+                    }
+                }
+            }
+
+            if (hasChanges) {
+                prefs.edit().putString("flutter.problem_completion", completion.toString()).apply()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing problem completion from accepted titles", e)
+        }
+    }
+
+    private fun getAllProblemsForCompletionSync(): List<Pair<String, List<ProblemInfo>>> {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lists = mutableListOf<Pair<String, List<ProblemInfo>>>()
+
+        try {
+            val cachedListsJson = prefs.getString("flutter.cached_default_lists", null)
+            if (cachedListsJson != null) {
+                val cachedLists = JSONObject(cachedListsJson)
+                val keys = cachedLists.keys()
+                while (keys.hasNext()) {
+                    val listId = keys.next()
+                    if (!cachedLists.has(listId)) continue
+                    lists.add(listId to parseListProblems(cachedLists.getJSONObject(listId)))
+                }
+            }
+
+            val customListsJson = prefs.getString("flutter.problem_lists", null)
+            if (customListsJson != null) {
+                val customLists = JSONArray(customListsJson)
+                for (i in 0 until customLists.length()) {
+                    val listObj = customLists.getJSONObject(i)
+                    val listId = listObj.optString("id", "")
+                    if (listId.isBlank()) continue
+                    lists.add(listId to parseListProblems(listObj))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading problems for completion sync", e)
+        }
+
+        return lists
+    }
+
+    private fun normalizeProblemTitle(title: String?): String? {
+        if (title.isNullOrBlank()) {
+            return null
+        }
+        return title.lowercase(Locale.US).trim()
+    }
+
+    private fun stripPremiumSuffix(title: String): String {
+        return title.replace(Regex("""\s*\(premium\)\s*$""", RegexOption.IGNORE_CASE), "")
     }
     
     private fun updateDailyProgress(todaySubmissions: Int, penalty: Int) {
