@@ -266,9 +266,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Slider(
               key: const ValueKey('settings_quota_slider'),
               value: currentQuota.toDouble(),
-              min: 1,
+              min: 0,
               max: 10,
-              divisions: 9,
+              divisions: 10,
               onChanged: (value) {
                 setState(() => _tempQuota = value.round());
               },
@@ -277,7 +277,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('1', style: GoogleFonts.inter(color: Colors.white38)),
+              Text('0', style: GoogleFonts.inter(color: Colors.white38)),
               Text('10', style: GoogleFonts.inter(color: Colors.white38)),
             ],
           ),

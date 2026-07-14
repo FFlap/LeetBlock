@@ -464,7 +464,7 @@ class AppBlockerService : Service() {
             null
         }
 
-        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(0)
         val normalized = DailyProgressStore.normalize(
             current = parsedProgress,
             baseQuota = baseQuota,
@@ -481,7 +481,7 @@ class AppBlockerService : Service() {
 
     private fun getQuotaSnapshot(prefs: android.content.SharedPreferences): DailyProgressSnapshot {
         val progress = getNormalizedDailyProgress(prefs)
-        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+        val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(0)
         return DailyProgressStore.snapshot(progress, baseQuota)
     }
 
@@ -1008,7 +1008,7 @@ class AppBlockerService : Service() {
 
         try {
             val progress = getNormalizedDailyProgress(prefs)
-            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(1)
+            val baseQuota = getIntFromPrefs(prefs, "flutter.daily_quota", 1).coerceAtLeast(0)
             val merged = DailyProgressStore.mergeSubmissions(
                 progress = progress,
                 todaySubmissions = todaySubmissions,

@@ -64,7 +64,7 @@ object DailyProgressStore {
             changed = true
         }
 
-        val safeBaseQuota = baseQuota.coerceAtLeast(1)
+        val safeBaseQuota = baseQuota.coerceAtLeast(0)
         if (!progress.has("dailyQuota") || progress.optInt("dailyQuota", safeBaseQuota) != safeBaseQuota) {
             progress.put("dailyQuota", safeBaseQuota)
             changed = true
@@ -76,7 +76,7 @@ object DailyProgressStore {
     fun snapshot(progress: JSONObject, baseQuota: Int): DailyProgressSnapshot {
         return DailyProgressSnapshot(
             completed = progress.optInt("questionsCompletedToday", 0).coerceAtLeast(0),
-            baseQuota = baseQuota.coerceAtLeast(1),
+            baseQuota = baseQuota.coerceAtLeast(0),
             penalty = progress.optInt("quotaPenalty", 0).coerceAtLeast(0),
         )
     }
@@ -96,7 +96,7 @@ object DailyProgressStore {
         val merged = JSONObject(progress.toString())
         merged.put("questionsCompletedToday", (todaySubmissions + manualOffset).coerceAtLeast(0))
         merged.put("quotaPenalty", penalty.coerceAtLeast(0))
-        merged.put("dailyQuota", baseQuota.coerceAtLeast(1))
+        merged.put("dailyQuota", baseQuota.coerceAtLeast(0))
         merged.put("date", nowIso)
         if (isDateTransition) {
             merged.put("manualOffset", 0)
