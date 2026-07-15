@@ -599,7 +599,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: SwitchListTile(
+      child: Material(
+        color: Colors.transparent,
+        child: SwitchListTile(
         key: const ValueKey('settings_strict_mode_switch'),
         contentPadding: EdgeInsets.zero,
         title: Text(
@@ -637,6 +639,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         inactiveThumbColor: Colors.white38,
         inactiveTrackColor: Colors.white10,
         trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+      ),
       ),
     ).animate().fadeIn();
   }

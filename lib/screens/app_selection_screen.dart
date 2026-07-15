@@ -167,7 +167,9 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
                   : Colors.transparent,
         ),
       ),
-      child: ListTile(
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 48,
@@ -214,6 +216,7 @@ class _AppSelectionScreenState extends State<AppSelectionScreen> {
           ),
         ),
         onTap: () => provider.toggleAppBlocking(app.packageName),
+      ),
       ),
     ).animate().fadeIn(
       delay: Duration(milliseconds: 50 * (provider.allApps.indexOf(app) % 10)),

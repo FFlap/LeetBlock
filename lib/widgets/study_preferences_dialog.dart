@@ -276,7 +276,9 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
           width: 1.5,
         ),
       ),
-      child: CheckboxListTile(
+      child: Material(
+        color: Colors.transparent,
+        child: CheckboxListTile(
         title: Text(
           title,
           style: TextStyle(
@@ -297,6 +299,7 @@ class _StudyPreferencesDialogState extends State<StudyPreferencesDialog> {
           color: value ? const Color(0xFFFFA116) : Colors.white54,
         ),
         controlAffinity: ListTileControlAffinity.trailing,
+      ),
       ),
     );
   }

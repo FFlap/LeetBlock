@@ -1052,7 +1052,9 @@ class _ProblemListDetailScreenState extends State<ProblemListDetailScreen> {
           children: [
             Container(
               color: const Color(0xFF252525),
-              child: Column(
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
                 children: [
                   ...problems.asMap().entries.map((problemEntry) {
                     final index = problemEntry.key;
@@ -1168,6 +1170,7 @@ class _ProblemListDetailScreenState extends State<ProblemListDetailScreen> {
                       onTap: () => _addProblem(category),
                     ),
                 ],
+              ),
               ),
             ),
           ],
