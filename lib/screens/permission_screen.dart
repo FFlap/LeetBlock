@@ -120,15 +120,8 @@ class _PermissionScreenState extends State<PermissionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0D1117)],
-          ),
-        ),
-        child: SafeArea(
+      backgroundColor: const Color(0xFF121212),
+      body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -164,7 +157,6 @@ class _PermissionScreenState extends State<PermissionScreen>
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -172,26 +164,6 @@ class _PermissionScreenState extends State<PermissionScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFA116).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFFFA116).withOpacity(0.3),
-                ),
-              ),
-              child: const Icon(
-                Icons.security,
-                color: Color(0xFFFFA116),
-                size: 28,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
         Text(
           'Permissions Required',
           style: GoogleFonts.inter(
@@ -225,12 +197,12 @@ class _PermissionScreenState extends State<PermissionScreen>
       key: key,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF21262D),
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color:
               isGranted
-                  ? const Color(0xFF238636).withOpacity(0.5)
+                  ? const Color(0xFF4CAF50).withOpacity(0.5)
                   : Colors.white10,
         ),
       ),
@@ -241,14 +213,14 @@ class _PermissionScreenState extends State<PermissionScreen>
             decoration: BoxDecoration(
               color:
                   isGranted
-                      ? const Color(0xFF238636).withOpacity(0.15)
+                      ? const Color(0xFF4CAF50).withOpacity(0.15)
                       : const Color(0xFFFFA116).withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isGranted ? Icons.check : icon,
               color:
-                  isGranted ? const Color(0xFF238636) : const Color(0xFFFFA116),
+                  isGranted ? const Color(0xFF4CAF50) : const Color(0xFFFFA116),
               size: 24,
             ),
           ),
@@ -297,14 +269,14 @@ class _PermissionScreenState extends State<PermissionScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF238636).withOpacity(0.15),
+                color: const Color(0xFF4CAF50).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 'Granted',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: const Color(0xFF238636),
+                  color: const Color(0xFF4CAF50),
                   fontWeight: FontWeight.w500,
                 ),
               ),

@@ -330,15 +330,8 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0D1117), Color(0xFF161B22), Color(0xFF0D1117)],
-          ),
-        ),
-        child: Center(
+      backgroundColor: const Color(0xFF121212),
+      body: Center(
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
@@ -350,18 +343,18 @@ class _SplashScreenState extends State<SplashScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFA116).withOpacity(0.15),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: const Color(0xFFFFA116).withOpacity(0.3),
                           ),
                         ),
-                        child: const Icon(
-                          Icons.code,
-                          color: Color(0xFFFFA116),
-                          size: 64,
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset(
+                          'assets/app_icon/leetblock_logo.png',
+                          width: 104,
+                          height: 104,
+                          fit: BoxFit.cover,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -397,7 +390,6 @@ class _SplashScreenState extends State<SplashScreen>
             },
           ),
         ),
-      ),
     );
   }
 }
